@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/login"
 	"github.com/zbum/scouter-server-go/internal/netio/service"
@@ -30,7 +31,7 @@ func startTestServer(t *testing.T) (net.Addr, context.CancelFunc, *cache.ObjectC
 	registry := service.NewRegistry()
 	service.RegisterLoginHandlers(registry, sessions, testVersion)
 	service.RegisterServerHandlers(registry, testVersion)
-	service.RegisterObjectHandlers(registry, objectCache, 30*time.Second)
+	service.RegisterObjectHandlers(registry, objectCache, 30*time.Second, counterCache, counter.NewObjectTypeManager())
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, 30*time.Second, nil)
 	service.RegisterXLogHandlers(registry, xlogCache, nil)
 	service.RegisterTextHandlers(registry, textCache, nil)
@@ -270,7 +271,7 @@ func TestTCP_CounterRealTime(t *testing.T) {
 	addr, cancel, _, counterCache, _, _ := startTestServer(t)
 	defer cancel()
 
-	counterCache.Put(cache.CounterKey{ObjHash: 100, Counter: "TPS", TimeType: 0}, value.NewDecimalValue(42))
+	counterCache.Put(cache.CounterKey{ObjHash: 100, Counter: "TPS", TimeType: cache.TimeTypeRealtime}, value.NewDecimalValue(42))
 
 	din, dout, conn := clientConn(t, addr)
 	defer conn.Close()
@@ -309,8 +310,8 @@ func TestTCP_CounterRealTimeAll(t *testing.T) {
 
 	objectCache.Put(10, &pack.ObjectPack{ObjHash: 10, ObjName: "/a", ObjType: "java", Alive: true})
 	objectCache.Put(20, &pack.ObjectPack{ObjHash: 20, ObjName: "/b", ObjType: "java", Alive: true})
-	counterCache.Put(cache.CounterKey{ObjHash: 10, Counter: "TPS", TimeType: 0}, value.NewDecimalValue(5))
-	counterCache.Put(cache.CounterKey{ObjHash: 20, Counter: "TPS", TimeType: 0}, value.NewDecimalValue(10))
+	counterCache.Put(cache.CounterKey{ObjHash: 10, Counter: "TPS", TimeType: cache.TimeTypeRealtime}, value.NewDecimalValue(5))
+	counterCache.Put(cache.CounterKey{ObjHash: 20, Counter: "TPS", TimeType: cache.TimeTypeRealtime}, value.NewDecimalValue(10))
 
 	din, dout, conn := clientConn(t, addr)
 	defer conn.Close()

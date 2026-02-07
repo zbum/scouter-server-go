@@ -18,7 +18,11 @@ type XLogEntry struct {
 	Data    []byte // pre-serialized XLogPack bytes
 }
 
+const batchSize = 512 // max entries per batch drain
+
 // XLogWR is an async XLog writer with per-day containers.
+// Entries are drained from the queue in batches and flushed together,
+// reducing the number of disk I/O syscalls under high write load.
 type XLogWR struct {
 	mu      sync.Mutex
 	baseDir string
@@ -41,17 +45,44 @@ func NewXLogWR(baseDir string) *XLogWR {
 }
 
 // Start begins the background processing goroutine.
+// Entries are drained in batches: the first entry blocks, then remaining
+// queued entries are drained non-blocking up to batchSize. After the batch
+// is processed, data files are flushed once.
 func (w *XLogWR) Start(ctx context.Context) {
 	go func() {
+		batch := make([]*XLogEntry, 0, batchSize)
 		for {
+			// Block until first entry arrives
 			select {
 			case <-ctx.Done():
 				return
 			case entry := <-w.queue:
 				if entry != nil {
-					w.process(entry)
+					batch = append(batch, entry)
 				}
 			}
+
+			// Drain remaining queued entries (non-blocking)
+			for len(batch) < batchSize {
+				select {
+				case entry := <-w.queue:
+					if entry != nil {
+						batch = append(batch, entry)
+					}
+				default:
+					goto processBatch
+				}
+			}
+
+		processBatch:
+			for _, e := range batch {
+				w.process(e)
+			}
+
+			if len(batch) > 0 {
+				w.flushData()
+			}
+			batch = batch[:0]
 		}
 	}()
 }
@@ -99,6 +130,17 @@ func (w *XLogWR) getContainer(date string) (*dayContainer, error) {
 	}
 	w.days[date] = container
 	return container, nil
+}
+
+// flushData flushes buffered data for all active day containers.
+func (w *XLogWR) flushData() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, c := range w.days {
+		if c.data != nil {
+			c.data.Flush()
+		}
+	}
 }
 
 // process writes an XLog entry to disk with triple indexing.

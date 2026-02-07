@@ -329,6 +329,108 @@ func TestXLogProtocolConversion(t *testing.T) {
 	}
 }
 
+// TestXLogWRBatchProcessing tests that entries queued together are processed as a batch.
+func TestXLogWRBatchProcessing(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(dir)
+
+	writer := NewXLogWR(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	writer.Start(ctx)
+
+	now := time.Now().UnixMilli()
+	n := 500
+
+	// Enqueue many entries at once so they accumulate in the queue
+	for i := 0; i < n; i++ {
+		writer.Add(&XLogEntry{
+			Time:    now + int64(i),
+			Txid:    int64(3000 + i),
+			Gxid:    0,
+			Elapsed: int32(i),
+			Data:    []byte("batch-entry"),
+		})
+	}
+
+	// Wait for processing
+	time.Sleep(200 * time.Millisecond)
+	writer.Close()
+
+	// Verify all entries are readable
+	reader := NewXLogRD(dir)
+	defer reader.Close()
+	date := time.UnixMilli(now).Format("20060102")
+
+	for i := 0; i < n; i++ {
+		data, err := reader.GetByTxid(date, int64(3000+i))
+		if err != nil {
+			t.Fatalf("GetByTxid %d failed: %v", 3000+i, err)
+		}
+		if data == nil {
+			t.Fatalf("Expected data for txid %d, got nil", 3000+i)
+		}
+		if string(data) != "batch-entry" {
+			t.Errorf("txid %d: expected 'batch-entry', got %q", 3000+i, string(data))
+		}
+	}
+
+	// Verify time range read returns all entries
+	var count int
+	err := reader.ReadByTime(date, now-1, now+int64(n)+1, func(data []byte) {
+		count++
+	})
+	if err != nil {
+		t.Fatalf("ReadByTime failed: %v", err)
+	}
+	if count != n {
+		t.Errorf("Expected %d entries by time range, got %d", n, count)
+	}
+}
+
+// TestXLogWRBatchWithGxid tests batch processing with gxid indexing.
+func TestXLogWRBatchWithGxid(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(dir)
+
+	writer := NewXLogWR(dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	writer.Start(ctx)
+
+	now := time.Now().UnixMilli()
+	gxid := int64(77777)
+
+	// 10 entries sharing the same gxid (distributed transaction)
+	for i := 0; i < 10; i++ {
+		writer.Add(&XLogEntry{
+			Time:    now + int64(i),
+			Txid:    int64(4000 + i),
+			Gxid:    gxid,
+			Elapsed: 50,
+			Data:    protocol.ToBytesLong(int64(i)),
+		})
+	}
+
+	time.Sleep(200 * time.Millisecond)
+	writer.Close()
+
+	reader := NewXLogRD(dir)
+	defer reader.Close()
+	date := time.UnixMilli(now).Format("20060102")
+
+	var gxidCount int
+	err := reader.ReadByGxid(date, gxid, func(data []byte) {
+		gxidCount++
+	})
+	if err != nil {
+		t.Fatalf("ReadByGxid failed: %v", err)
+	}
+	if gxidCount != 10 {
+		t.Errorf("Expected 10 entries for gxid, got %d", gxidCount)
+	}
+}
+
 // TestXLogReaderNonExistentDate tests reading from a date that has no data.
 func TestXLogReaderNonExistentDate(t *testing.T) {
 	dir := setupTestDir(t)

@@ -59,6 +59,11 @@ func (p *ProfileData) Write(txid int64, block []byte) error {
 		return err
 	}
 
+	// Flush immediately so data is readable by ProfileRD (which opens a separate file handle)
+	if err := p.data.Flush(); err != nil {
+		return err
+	}
+
 	key := protocol.ToBytesLong(txid)
 	return p.index.Put(key, protocol.ToBytes5(offset))
 }

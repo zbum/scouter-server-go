@@ -11,7 +11,7 @@ import (
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-const TimeTypeRealtime byte = 0
+// Use cache.TimeTypeRealtime instead of local constant.
 
 // PerfCountCore processes incoming PerfCounterPack data.
 type PerfCountCore struct {
@@ -63,7 +63,7 @@ func (pc *PerfCountCore) run() {
 			"objHash", objHash,
 			"counters", cp.Data.Size())
 		if pc.counterWR != nil {
-			if cp.TimeType == TimeTypeRealtime {
+			if cp.TimeType == cache.TimeTypeRealtime {
 				// Convert MapValue entries to map[string]value.Value
 				counters := make(map[string]value.Value)
 				for _, entry := range cp.Data.Entries {

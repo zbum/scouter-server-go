@@ -207,7 +207,7 @@ func (s *Server) handleClient(ctx context.Context, reader io.Reader, writer *buf
 		if handler != nil {
 			handler(din, dout, sessionOk)
 		} else {
-			slog.Debug("TCP unknown command", "addr", remoteAddr, "cmd", cmd)
+			slog.Warn("TCP unknown command", "addr", remoteAddr, "cmd", cmd)
 		}
 
 		// Write NoNEXT terminator and flush

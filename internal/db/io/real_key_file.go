@@ -4,12 +4,14 @@ import (
 	"encoding/binary"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/zbum/scouter-server-go/internal/protocol"
 )
 
 const (
-	kfileHeaderSize = 2 // 0xCA 0xFE
+	kfileHeaderSize    = 2     // 0xCA 0xFE
+	appendBufThreshold = 16384 // 16KB - auto-flush threshold for buffered appends
 )
 
 // KeyRecord represents a single record in the key file chain.
@@ -23,21 +25,29 @@ type KeyRecord struct {
 
 // RealKeyFile is a hash chain index file (.kfile) with sequential record storage.
 // Record format: [1B deleted][5B prevPos][2B keyLen][keyLen B key][blob dataPos]
+//
+// Append operations are buffered in memory and flushed to disk either when the
+// buffer exceeds appendBufThreshold or before any read/positional-write operation.
+// This reduces disk I/O significantly under high write load.
 type RealKeyFile struct {
-	mu   sync.Mutex
-	path string
-	file string
-	raf  *os.File
+	mu        sync.Mutex
+	path      string
+	file      string
+	raf       *os.File
+	appendBuf []byte // buffered append data
+	fileEnd   int64  // actual file size on disk (excludes buffered data)
 }
 
 func NewRealKeyFile(path string) (*RealKeyFile, error) {
 	f := &RealKeyFile{
-		path: path,
-		file: path + ".kfile",
+		path:      path,
+		file:      path + ".kfile",
+		appendBuf: make([]byte, 0, appendBufThreshold),
 	}
 	if err := f.open(); err != nil {
 		return nil, err
 	}
+	GetFlushController().Register(f)
 	return f, nil
 }
 
@@ -57,13 +67,56 @@ func (f *RealKeyFile) open() error {
 		if err != nil {
 			return err
 		}
+		f.fileEnd = kfileHeaderSize
+	} else {
+		f.fileEnd = fi.Size()
 	}
 	return nil
+}
+
+// flushAppendBuf writes buffered append data to the end of the file.
+// Must be called with mu held.
+func (f *RealKeyFile) flushAppendBuf() error {
+	if len(f.appendBuf) == 0 {
+		return nil
+	}
+	if _, err := f.raf.Seek(f.fileEnd, 0); err != nil {
+		return err
+	}
+	n, err := f.raf.Write(f.appendBuf)
+	if err != nil {
+		return err
+	}
+	f.fileEnd += int64(n)
+	f.appendBuf = f.appendBuf[:0]
+	return nil
+}
+
+// Flush implements IFlushable. Writes buffered data to disk.
+func (f *RealKeyFile) Flush() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	_ = f.flushAppendBuf()
+}
+
+// IsDirty implements IFlushable.
+func (f *RealKeyFile) IsDirty() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.appendBuf) > 0
+}
+
+// Interval implements IFlushable.
+func (f *RealKeyFile) Interval() time.Duration {
+	return 2 * time.Second
 }
 
 func (f *RealKeyFile) GetRecord(pos int64) (*KeyRecord, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return nil, err
+	}
 	return f.getRecordInternal(pos)
 }
 
@@ -157,6 +210,9 @@ func (f *RealKeyFile) readBlob() ([]byte, error) {
 func (f *RealKeyFile) IsDeleted(pos int64) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return false, err
+	}
 	if _, err := f.raf.Seek(pos, 0); err != nil {
 		return false, err
 	}
@@ -170,6 +226,9 @@ func (f *RealKeyFile) IsDeleted(pos int64) (bool, error) {
 func (f *RealKeyFile) GetPrevPos(pos int64) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return 0, err
+	}
 	if _, err := f.raf.Seek(pos+1, 0); err != nil {
 		return 0, err
 	}
@@ -183,6 +242,9 @@ func (f *RealKeyFile) GetPrevPos(pos int64) (int64, error) {
 func (f *RealKeyFile) GetTimeKey(pos int64) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return nil, err
+	}
 	if _, err := f.raf.Seek(pos+1+5, 0); err != nil {
 		return nil, err
 	}
@@ -203,6 +265,9 @@ func (f *RealKeyFile) GetTimeKey(pos int64) ([]byte, error) {
 func (f *RealKeyFile) GetDataPos(pos int64) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return nil, err
+	}
 	if _, err := f.raf.Seek(pos+1+5, 0); err != nil {
 		return nil, err
 	}
@@ -221,6 +286,9 @@ func (f *RealKeyFile) GetDataPos(pos int64) ([]byte, error) {
 func (f *RealKeyFile) SetDelete(pos int64, deleted bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return err
+	}
 	if _, err := f.raf.Seek(pos, 0); err != nil {
 		return err
 	}
@@ -235,6 +303,9 @@ func (f *RealKeyFile) SetDelete(pos int64, deleted bool) error {
 func (f *RealKeyFile) SetHashLink(pos int64, value int64) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return err
+	}
 	if _, err := f.raf.Seek(pos+1, 0); err != nil {
 		return err
 	}
@@ -246,6 +317,9 @@ func (f *RealKeyFile) SetHashLink(pos int64, value int64) error {
 func (f *RealKeyFile) Write(pos int64, prevPos int64, indexKey []byte, dataPos []byte) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return err
+	}
 	return f.writeInternal(pos, prevPos, indexKey, dataPos)
 }
 
@@ -269,6 +343,9 @@ func (f *RealKeyFile) writeInternal(pos int64, prevPos int64, indexKey []byte, d
 func (f *RealKeyFile) Update(pos int64, key []byte, value []byte) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := f.flushAppendBuf(); err != nil {
+		return false, err
+	}
 
 	if _, err := f.raf.Seek(pos+1+5, 0); err != nil {
 		return false, err
@@ -305,16 +382,28 @@ func (f *RealKeyFile) Update(pos int64, key []byte, value []byte) (bool, error) 
 }
 
 // Append writes a new record at the end of the file and returns the position.
+// The data is buffered in memory and flushed when the buffer exceeds the threshold
+// or before the next read/positional-write operation.
 func (f *RealKeyFile) Append(prevPos int64, indexKey []byte, dataPos []byte) (int64, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	pos, err := f.raf.Seek(0, 2) // seek to end
-	if err != nil {
-		return 0, err
+
+	pos := f.fileEnd + int64(len(f.appendBuf))
+
+	o := protocol.NewDataOutputX()
+	o.WriteBoolean(false)
+	o.WriteLong5(prevPos)
+	o.WriteShortBytes(indexKey)
+	o.WriteBlob(dataPos)
+
+	f.appendBuf = append(f.appendBuf, o.ToByteArray()...)
+
+	if len(f.appendBuf) >= appendBufThreshold {
+		if err := f.flushAppendBuf(); err != nil {
+			return 0, err
+		}
 	}
-	if err := f.writeInternal(pos, prevPos, indexKey, dataPos); err != nil {
-		return 0, err
-	}
+
 	return pos, nil
 }
 
@@ -325,16 +414,14 @@ func (f *RealKeyFile) GetFirstPos() int64 {
 func (f *RealKeyFile) GetLength() int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	fi, err := f.raf.Stat()
-	if err != nil {
-		return 0
-	}
-	return fi.Size()
+	return f.fileEnd + int64(len(f.appendBuf))
 }
 
 func (f *RealKeyFile) Close() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	_ = f.flushAppendBuf()
+	GetFlushController().Unregister(f)
 	if f.raf != nil {
 		f.raf.Close()
 		f.raf = nil

@@ -6,6 +6,13 @@ import (
 	"github.com/zbum/scouter-server-go/internal/protocol/value"
 )
 
+// TimeType constants matching Java's TimeTypeEnum.
+const (
+	TimeTypeRealtime byte = 1
+	TimeTypeOneMin   byte = 2
+	TimeTypeFiveMin  byte = 3
+)
+
 // CounterKey identifies a specific counter for an object.
 type CounterKey struct {
 	ObjHash  int32

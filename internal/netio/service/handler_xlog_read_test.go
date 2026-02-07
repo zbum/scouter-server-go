@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,7 +66,7 @@ func TestXLogReadByTxid(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
 
 	// Build request
 	param := &pack.MapPack{}
@@ -123,7 +124,7 @@ func TestXLogReadByTxidNotFound(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
 
 	param := &pack.MapPack{}
 	param.PutStr("date", "20260207")
@@ -182,7 +183,7 @@ func TestXLogReadByGxid(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
 
 	param := &pack.MapPack{}
 	param.PutStr("date", date)
@@ -253,14 +254,14 @@ func TestTranxProfile(t *testing.T) {
 	cancel()
 	profileWR.Close()
 
-	// Set up reader and handler
+	// Re-open profileWR so it shares the same MemHashBlock state
+	profileWR2 := profile.NewProfileWR(baseDir)
+
 	xlogRD := xlog.NewXLogRD(baseDir)
 	defer xlogRD.Close()
-	profileRD := profile.NewProfileRD(baseDir)
-	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, profileRD)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR2)
 
 	param := &pack.MapPack{}
 	param.PutStr("date", date)
@@ -280,44 +281,29 @@ func TestTranxProfile(t *testing.T) {
 		t.Fatal("expected non-empty response from TRANX_PROFILE")
 	}
 
-	// Parse: each block is FLAG_HAS_NEXT + blob
+	// Parse: FLAG_HAS_NEXT + XLogProfilePack (all blocks concatenated)
 	respDin := protocol.NewDataInputX(result)
-	var blocks [][]byte
-	for respDin.Available() > 0 {
-		flag, err := respDin.ReadByte()
-		if err != nil {
-			break
-		}
-		if flag != protocol.FLAG_HAS_NEXT {
-			t.Fatalf("expected FLAG_HAS_NEXT, got 0x%02x", flag)
-		}
-		blob, err := respDin.ReadBlob()
-		if err != nil {
-			t.Fatalf("failed to read blob: %v", err)
-		}
-		blocks = append(blocks, blob)
+	flag, err := respDin.ReadByte()
+	if err != nil {
+		t.Fatalf("failed to read flag: %v", err)
 	}
-
-	if len(blocks) != 2 {
-		t.Fatalf("expected 2 profile blocks, got %d", len(blocks))
+	if flag != protocol.FLAG_HAS_NEXT {
+		t.Fatalf("expected FLAG_HAS_NEXT, got 0x%02x", flag)
 	}
-	// Profile blocks may be returned in any order depending on index implementation
-	foundStep1 := false
-	foundStep2 := false
-	for _, b := range blocks {
-		switch string(b) {
-		case "step1:method_call:100ms":
-			foundStep1 = true
-		case "step2:sql_query:50ms":
-			foundStep2 = true
-		default:
-			t.Errorf("unexpected profile block: %q", b)
-		}
+	profilePack, err := pack.ReadPack(respDin)
+	if err != nil {
+		t.Fatalf("failed to read XLogProfilePack: %v", err)
 	}
-	if !foundStep1 {
+	pp, ok := profilePack.(*pack.XLogProfilePack)
+	if !ok {
+		t.Fatalf("expected XLogProfilePack, got %T", profilePack)
+	}
+	// Profile contains concatenated blocks
+	profileStr := string(pp.Profile)
+	if !strings.Contains(profileStr, "step1:method_call:100ms") {
 		t.Error("missing profile block 'step1:method_call:100ms'")
 	}
-	if !foundStep2 {
+	if !strings.Contains(profileStr, "step2:sql_query:50ms") {
 		t.Error("missing profile block 'step2:sql_query:50ms'")
 	}
 }
@@ -328,11 +314,11 @@ func TestTranxProfileNotFound(t *testing.T) {
 
 	xlogRD := xlog.NewXLogRD(baseDir)
 	defer xlogRD.Close()
-	profileRD := profile.NewProfileRD(baseDir)
-	defer profileRD.Close()
+	profileWR := profile.NewProfileWR(baseDir)
+	defer profileWR.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, profileRD)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR)
 
 	param := &pack.MapPack{}
 	param.PutStr("date", "20260207")
@@ -641,11 +627,9 @@ func TestTranxLoadTimeGroup(t *testing.T) {
 	// Set up handler
 	xlogRD := xlog.NewXLogRD(baseDir)
 	defer xlogRD.Close()
-	profileRD := profile.NewProfileRD(baseDir)
-	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, profileRD)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, nil)
 
 	// Test without filter - should get all 3 + 1 metadata pack = 4 HAS_NEXT
 	param := &pack.MapPack{}

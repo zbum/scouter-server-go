@@ -3,6 +3,7 @@ package core
 import (
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/zbum/scouter-server-go/internal/db/profile"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
@@ -27,6 +28,9 @@ func (pc *ProfileCore) Handler() PackHandler {
 	return func(p pack.Pack, addr *net.UDPAddr) {
 		switch pp := p.(type) {
 		case *pack.XLogProfilePack:
+			if pp.Time == 0 {
+				pp.Time = time.Now().UnixMilli()
+			}
 			select {
 			case pc.queue <- pp:
 			default:
@@ -34,8 +38,12 @@ func (pc *ProfileCore) Handler() PackHandler {
 			}
 		case *pack.XLogProfilePack2:
 			// XLogProfilePack2 embeds XLogProfilePack, convert
+			t := pp.Time
+			if t == 0 {
+				t = time.Now().UnixMilli()
+			}
 			converted := &pack.XLogProfilePack{
-				Time:    pp.Time,
+				Time:    t,
 				ObjHash: pp.ObjHash,
 				Service: pp.Service,
 				Txid:    pp.Txid,

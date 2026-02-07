@@ -69,6 +69,17 @@ func (sm *SessionManager) GetUser(session int64) *User {
 	return sm.sessions[session]
 }
 
+// GetAllUsers returns all currently logged-in users.
+func (sm *SessionManager) GetAllUsers() []*User {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	users := make([]*User, 0, len(sm.sessions))
+	for _, u := range sm.sessions {
+		users = append(users, u)
+	}
+	return users
+}
+
 func generateSession() int64 {
 	var b [8]byte
 	rand.Read(b[:])

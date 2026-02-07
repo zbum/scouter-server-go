@@ -125,6 +125,18 @@ func (p *MapPack) GetLong(key string) int64 {
 	return 0
 }
 
+// GetList retrieves a ListValue by key.
+func (p *MapPack) GetList(key string) *value.ListValue {
+	v := p.Get(key)
+	if v == nil {
+		return nil
+	}
+	if lv, ok := v.(*value.ListValue); ok {
+		return lv
+	}
+	return nil
+}
+
 // Size returns the number of entries in the map.
 func (p *MapPack) Size() int {
 	return len(p.Table)

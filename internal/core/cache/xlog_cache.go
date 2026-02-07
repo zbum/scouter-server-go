@@ -10,12 +10,21 @@ type XLogEntry struct {
 	Data    []byte
 }
 
+// XLogCacheResult holds the result of a Get call with pagination state.
+type XLogCacheResult struct {
+	Loop  int64
+	Index int
+	Data  []XLogEntry
+}
+
 // XLogCache is a bounded ring buffer of recent XLog entries for real-time streaming.
+// Implements loop/index pagination matching Java's XLogLoopCache.
 type XLogCache struct {
 	mu      sync.Mutex
 	entries []XLogEntry
 	size    int
-	pos     int
+	pos     int // current write index (0..size-1)
+	loop    int64
 	count   int
 }
 
@@ -35,9 +44,68 @@ func (c *XLogCache) Put(objHash int32, elapsed int32, isError bool, data []byte)
 		IsError: isError,
 		Data:    data,
 	}
-	c.pos = (c.pos + 1) % c.size
+	c.pos++
+	if c.pos >= c.size {
+		c.loop++
+		c.pos = 0
+	}
 	if c.count < c.size {
 		c.count++
+	}
+}
+
+// Get returns entries added since (lastLoop, lastIndex), filtered by minElapsed.
+// Entries with elapsed >= minElapsed OR isError are returned.
+// If objHashSet is non-nil, entries are filtered to those object hashes.
+// Returns the current (loop, index) for the client to use in the next request.
+func (c *XLogCache) Get(lastLoop int64, lastIndex int, minElapsed int32, objHashSet map[int32]bool) *XLogCacheResult {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	endIndex := c.pos
+	endLoop := c.loop
+
+	result := &XLogCacheResult{
+		Loop:  endLoop,
+		Index: endIndex,
+	}
+
+	switch endLoop - lastLoop {
+	case 0:
+		if lastIndex < endIndex {
+			c.copyFiltered(&result.Data, lastIndex, endIndex, minElapsed, objHashSet)
+		}
+	case 1:
+		if lastIndex <= endIndex {
+			// Gap too large for one loop, return what we can
+			c.copyFiltered(&result.Data, endIndex, c.size, minElapsed, objHashSet)
+			c.copyFiltered(&result.Data, 0, endIndex, minElapsed, objHashSet)
+		} else {
+			c.copyFiltered(&result.Data, lastIndex, c.size, minElapsed, objHashSet)
+			c.copyFiltered(&result.Data, 0, endIndex, minElapsed, objHashSet)
+		}
+	default:
+		// More than one loop behind, return entire current buffer
+		c.copyFiltered(&result.Data, endIndex, c.size, minElapsed, objHashSet)
+		c.copyFiltered(&result.Data, 0, endIndex, minElapsed, objHashSet)
+	}
+
+	return result
+}
+
+func (c *XLogCache) copyFiltered(buf *[]XLogEntry, from, to int, minElapsed int32, objHashSet map[int32]bool) {
+	for i := from; i < to; i++ {
+		e := c.entries[i]
+		if e.Data == nil {
+			continue
+		}
+		if e.Elapsed < minElapsed && !e.IsError {
+			continue
+		}
+		if objHashSet != nil && !objHashSet[e.ObjHash] {
+			continue
+		}
+		*buf = append(*buf, e)
 	}
 }
 

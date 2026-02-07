@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zbum/scouter-server-go/internal/config"
+	scoutercounter "github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db"
@@ -129,14 +130,18 @@ func main() {
 	customKV.Start(ctx)
 	defer customKV.Close()
 
+	// --- Alert cache ---
+	alertCache := cache.NewAlertCache(1024)
+
 	// --- Core processors ---
 	textCore := core.NewTextCore(textCache, textWR)
 	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR)
 	perfCountCore := core.NewPerfCountCore(counterCache, counterWR)
 	profileCore := core.NewProfileCore(profileWR)
 	deadTimeout := time.Duration(cfg.ObjectDeadTimeMs()) * time.Millisecond
-	agentManager := core.NewAgentManager(objectCache, deadTimeout)
-	alertCore := core.NewAlertCore(alertWR)
+	typeManager := scoutercounter.NewObjectTypeManager()
+	alertCore := core.NewAlertCore(alertWR, alertCache)
+	agentManager := core.NewAgentManager(objectCache, deadTimeout, typeManager, textCache, textCore, alertCore)
 	summaryCore := core.NewSummaryCore(summaryWR)
 
 	// --- Dispatcher ---
@@ -157,19 +162,22 @@ func main() {
 	registry := service.NewRegistry()
 	service.RegisterLoginHandlers(registry, sessions, Version)
 	service.RegisterServerHandlers(registry, Version)
-	service.RegisterObjectHandlers(registry, objectCache, deadTimeout)
+	service.RegisterObjectHandlers(registry, objectCache, deadTimeout, counterCache, typeManager)
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, deadTimeout, counterRD)
 	service.RegisterXLogHandlers(registry, xlogCache, xlogRD)
 	service.RegisterTextHandlers(registry, textCache, textRD)
-	service.RegisterXLogReadHandlers(registry, xlogRD, profileRD)
+	service.RegisterXLogReadHandlers(registry, xlogRD, profileRD, profileWR)
 	service.RegisterCounterReadHandlers(registry, counterRD, objectCache, deadTimeout)
-	service.RegisterAlertHandlers(registry, alertRD)
+	service.RegisterAlertHandlers(registry, alertRD, alertCache)
 	service.RegisterSummaryHandlers(registry, summaryRD)
 	service.RegisterCounterExtHandlers(registry, counterCache, objectCache, deadTimeout, counterRD)
 	service.RegisterObjectExtHandlers(registry, objectCache, deadTimeout)
-	service.RegisterConfigureHandlers(registry, Version)
+	service.RegisterConfigureHandlers(registry, Version, typeManager)
 	service.RegisterServerMgmtHandlers(registry, Version, dataDir)
 	service.RegisterKVHandlers(registry, globalKV, customKV)
+	service.RegisterActiveSpeedHandlers(registry, counterCache, objectCache, deadTimeout)
+	service.RegisterLoginExtHandlers(registry, sessions)
+	service.RegisterVisitorHandlers(registry)
 
 	// --- UDP pipeline ---
 	processor := udp.NewNetDataProcessor(dispatcher, 4)
@@ -183,7 +191,7 @@ func main() {
 	tcpServer := tcp.NewServer(tcpConfig, registry, sessions)
 
 	// --- Agent proxy handlers (requires tcpServer for agent RPC) ---
-	service.RegisterAgentProxyHandlers(registry, tcpServer)
+	service.RegisterAgentProxyHandlers(registry, tcpServer, objectCache, deadTimeout)
 
 	// --- Day container purger ---
 	purger := db.NewDayContainerPurger(cfg.DayContainerKeepHours(),

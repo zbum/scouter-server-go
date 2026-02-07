@@ -114,6 +114,16 @@ func (w *ProfileWR) flushAll() {
 	}
 }
 
+// Read retrieves profile blocks through the writer's own ProfileData instance,
+// which has an up-to-date MemHashBlock index (unlike ProfileRD's stale copy).
+func (w *ProfileWR) Read(date string, txid int64, maxBlocks int) ([][]byte, error) {
+	data, err := w.getData(date)
+	if err != nil {
+		return nil, err
+	}
+	return data.Read(txid, maxBlocks)
+}
+
 // Close closes all open data files.
 func (w *ProfileWR) Close() {
 	w.mu.Lock()

@@ -30,21 +30,10 @@ func NewXLogData(dir string) (*XLogData, error) {
 
 // Write writes an XLog entry as [short:length][bytes:data] and returns the start offset.
 func (x *XLogData) Write(data []byte) (int64, error) {
-	// Write 2-byte length header
-	var lenBuf [2]byte
-	binary.BigEndian.PutUint16(lenBuf[:], uint16(len(data)))
-	offset, err := x.dataFile.Write(lenBuf[:])
-	if err != nil {
-		return 0, err
-	}
-
-	// Write actual data
-	_, err = x.dataFile.Write(data)
-	if err != nil {
-		return 0, err
-	}
-
-	return offset, nil
+	buf := make([]byte, 2+len(data))
+	binary.BigEndian.PutUint16(buf[:2], uint16(len(data)))
+	copy(buf[2:], data)
+	return x.dataFile.Write(buf)
 }
 
 // Read reads an XLog entry from the given offset.

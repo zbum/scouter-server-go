@@ -6,7 +6,17 @@
       "Bash(make build:*)",
       "Bash(grep:*)",
       "Bash(git check-ignore:*)",
-      "Bash(echo:*)"
+      "Bash(echo:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(./scouter-server)",
+      "Bash(python3:*)",
+      "Bash(xargs basename:*)",
+      "Bash(pkill:*)",
+      "Bash(/Users/zbum/IdeaProjects/zbum/scouter-server-go/scouter-server)",
+      "Bash(xargs cat:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)"
     ]
   }
 }

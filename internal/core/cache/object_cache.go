@@ -88,6 +88,20 @@ func (c *ObjectCache) Remove(objHash int32) {
 	delete(c.store, objHash)
 }
 
+// ClearInactive removes all non-alive objects from the cache and returns the count removed.
+func (c *ObjectCache) ClearInactive() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	count := 0
+	for hash, v := range c.store {
+		if !v.Pack.Alive {
+			delete(c.store, hash)
+			count++
+		}
+	}
+	return count
+}
+
 func (c *ObjectCache) Size() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()

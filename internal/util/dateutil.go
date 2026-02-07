@@ -3,11 +3,13 @@ package util
 import "time"
 
 const (
-	MillisPerSecond = 1000
-	MillisPerMinute = 60 * MillisPerSecond
-	MillisPerHour   = 60 * MillisPerMinute
-	MillisPerDay    = 24 * MillisPerHour
-	SecondsPerDay   = 86400
+	MillisPerSecond     = 1000
+	MillisPerMinute     = 60 * MillisPerSecond
+	MillisPerFiveMinute = 5 * MillisPerMinute
+	MillisPerHour       = 60 * MillisPerMinute
+	MillisPerDay        = 24 * MillisPerHour
+	SecondsPerDay       = 86400
+	BucketsPerDay       = 288 // 24*60/5
 )
 
 // GetDateMillis returns the milliseconds elapsed since midnight (local time) for the given
@@ -23,4 +25,13 @@ func GetDateMillis(timeMs int64) int {
 func FormatDate(timeMs int64) string {
 	t := time.UnixMilli(timeMs)
 	return t.Format("20060102")
+}
+
+// DateToMillis converts a "YYYYMMDD" date string to Unix millis at midnight local time.
+func DateToMillis(date string) int64 {
+	t, err := time.ParseInLocation("20060102", date, time.Now().Location())
+	if err != nil {
+		return 0
+	}
+	return t.UnixMilli()
 }

@@ -43,6 +43,16 @@ func (tc *TextCore) Handler() PackHandler {
 	}
 }
 
+// AddText stores a text entry programmatically (not from a network pack).
+// Used by AgentManager to store object names, etc.
+func (tc *TextCore) AddText(xtype string, hash int32, text string) {
+	tp := &pack.TextPack{XType: xtype, Hash: hash, Text: text}
+	select {
+	case tc.queue <- tp:
+	default:
+	}
+}
+
 func (tc *TextCore) run() {
 	for tp := range tc.queue {
 		slog.Debug("TextCore processing", "type", tp.XType, "hash", tp.Hash, "text", tp.Text)

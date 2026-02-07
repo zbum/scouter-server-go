@@ -160,6 +160,30 @@ func RegisterServerMgmtHandlers(r *Registry, version string, dataDir string) {
 		pack.WritePack(dout, resp)
 	})
 
+	// SERVER_THREAD_DETAIL: Return goroutine stack trace detail.
+	r.Register(protocol.SERVER_THREAD_DETAIL, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pack.ReadPack(din)
+
+		// Go doesn't have individual thread IDs like Java.
+		// Return full goroutine stack as detail info.
+		buf := make([]byte, 1<<16)
+		n := runtime.Stack(buf, true)
+
+		resp := &pack.MapPack{}
+		resp.PutStr("info", string(buf[:n]))
+
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+
+	// CHECK_JOB: Poll for pending remote control commands.
+	// The client sends a MapPack with "session"; we return nothing (no remote control support yet).
+	r.Register(protocol.CHECK_JOB, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		// Must read the parameter pack to keep the protocol in sync
+		pack.ReadPack(din)
+		// No pending commands - return nothing (no FLAG_HAS_NEXT)
+	})
+
 	// SERVER_LOG_DETAIL: Return content of a specific log file.
 	r.Register(protocol.SERVER_LOG_DETAIL, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
 		pk, err := pack.ReadPack(din)

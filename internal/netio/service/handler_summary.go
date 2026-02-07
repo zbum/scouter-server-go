@@ -6,15 +6,18 @@ import (
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
 )
 
-// Summary type constants (matching Java Scouter)
+// Summary type constants (matching Java Scouter SummaryEnum)
 const (
-	SummaryTypeApp          byte = 1
-	SummaryTypeSQL          byte = 2
-	SummaryTypeAPICall      byte = 3
-	SummaryTypeIP           byte = 4
-	SummaryTypeUA           byte = 5
-	SummaryTypeServiceError byte = 6
-	SummaryTypeAlert        byte = 7
+	SummaryTypeApp              byte = 1
+	SummaryTypeSQL              byte = 2
+	SummaryTypeAPICall          byte = 3
+	SummaryTypeIP               byte = 4
+	SummaryTypeUA               byte = 5
+	SummaryTypeServiceError     byte = 6
+	SummaryTypeAlert            byte = 7
+	SummaryTypeEndUserNav       byte = 10
+	SummaryTypeEndUserAjax      byte = 11
+	SummaryTypeEndUserError     byte = 12
 )
 
 // RegisterSummaryHandlers registers handlers for loading historical summaries.
@@ -53,6 +56,21 @@ func RegisterSummaryHandlers(r *Registry, summaryRD *summary.SummaryRD) {
 	// LOAD_ALERT_SUMMARY: load alert summary data
 	r.Register(protocol.LOAD_ALERT_SUMMARY, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
 		loadSummaryByType(din, dout, summaryRD, SummaryTypeAlert)
+	})
+
+	// LOAD_ENDUSER_NAV_SUMMARY: load end-user navigation timing summary
+	r.Register(protocol.LOAD_ENDUSER_NAV_SUMMARY, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		loadSummaryByType(din, dout, summaryRD, SummaryTypeEndUserNav)
+	})
+
+	// LOAD_ENDUSER_AJAX_SUMMARY: load end-user AJAX timing summary
+	r.Register(protocol.LOAD_ENDUSER_AJAX_SUMMARY, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		loadSummaryByType(din, dout, summaryRD, SummaryTypeEndUserAjax)
+	})
+
+	// LOAD_ENDUSER_ERROR_SUMMARY: load end-user script error summary
+	r.Register(protocol.LOAD_ENDUSER_ERROR_SUMMARY, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		loadSummaryByType(din, dout, summaryRD, SummaryTypeEndUserError)
 	})
 }
 

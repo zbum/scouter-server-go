@@ -4,12 +4,14 @@ import (
 	"os"
 
 	"github.com/zbum/scouter-server-go/internal/config"
+	"github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/protocol"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
+	"github.com/zbum/scouter-server-go/internal/protocol/value"
 )
 
 // RegisterConfigureHandlers registers configuration management handlers.
-func RegisterConfigureHandlers(r *Registry, version string) {
+func RegisterConfigureHandlers(r *Registry, version string, typeManager *counter.ObjectTypeManager) {
 
 	// GET_CONFIGURE_SERVER: Read the config file and return its contents.
 	r.Register(protocol.GET_CONFIGURE_SERVER, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
@@ -54,6 +56,36 @@ func RegisterConfigureHandlers(r *Registry, version string) {
 			resp.PutStr("result", "error: "+err.Error())
 		} else {
 			resp.PutStr("result", "ok")
+		}
+
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+
+	// GET_XML_COUNTER: Return counter definitions XML for the client's CounterEngine.
+	r.Register(protocol.GET_XML_COUNTER, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		resp := &pack.MapPack{}
+		resp.Put("default", &value.BlobValue{Value: counter.DefaultCountersXML})
+
+		// Load custom counters.site.xml if it exists on disk
+		var customData []byte
+		if cfg := config.Get(); cfg != nil {
+			confDir := cfg.ConfDir()
+			if confDir != "" {
+				customPath := confDir + "/counters.site.xml"
+				if data, err := os.ReadFile(customPath); err == nil && len(data) > 0 {
+					customData = data
+				}
+			}
+		}
+
+		// If no file-based custom XML, use dynamically registered types
+		if customData == nil && typeManager != nil {
+			customData = typeManager.GetCustomXML()
+		}
+
+		if customData != nil {
+			resp.Put("custom", &value.BlobValue{Value: customData})
 		}
 
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)

@@ -142,7 +142,7 @@ func TestPerfCountCore_Handler(t *testing.T) {
 
 	cp := &pack.PerfCounterPack{
 		ObjName:  "/test/agent",
-		TimeType: TimeTypeRealtime,
+		TimeType: cache.TimeTypeRealtime,
 		Data:     data,
 	}
 	handler(cp, nil)
@@ -151,7 +151,7 @@ func TestPerfCountCore_Handler(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	objHash := util.HashString("/test/agent")
-	tpsKey := cache.CounterKey{ObjHash: objHash, Counter: "TPS", TimeType: TimeTypeRealtime}
+	tpsKey := cache.CounterKey{ObjHash: objHash, Counter: "TPS", TimeType: cache.TimeTypeRealtime}
 	v, ok := cc.Get(tpsKey)
 	if !ok {
 		t.Fatal("TPS not in cache")
@@ -161,7 +161,7 @@ func TestPerfCountCore_Handler(t *testing.T) {
 		t.Fatalf("expected TPS=100, got %v", v)
 	}
 
-	cpuKey := cache.CounterKey{ObjHash: objHash, Counter: "CPU", TimeType: TimeTypeRealtime}
+	cpuKey := cache.CounterKey{ObjHash: objHash, Counter: "CPU", TimeType: cache.TimeTypeRealtime}
 	v, ok = cc.Get(cpuKey)
 	if !ok {
 		t.Fatal("CPU not in cache")
@@ -184,7 +184,7 @@ func TestPerfCountCore_Handler_WrongPackType(t *testing.T) {
 
 func TestAgentManager_Handler(t *testing.T) {
 	oc := cache.NewObjectCache()
-	am := NewAgentManager(oc, 30*time.Second)
+	am := NewAgentManager(oc, 30*time.Second, nil, nil, nil, nil)
 	handler := am.Handler()
 
 	op := &pack.ObjectPack{
@@ -216,7 +216,7 @@ func TestAgentManager_Handler(t *testing.T) {
 
 func TestAgentManager_Handler_PresetHashAndAddr(t *testing.T) {
 	oc := cache.NewObjectCache()
-	am := NewAgentManager(oc, 30*time.Second)
+	am := NewAgentManager(oc, 30*time.Second, nil, nil, nil, nil)
 	handler := am.Handler()
 
 	op := &pack.ObjectPack{
@@ -237,7 +237,7 @@ func TestAgentManager_Handler_PresetHashAndAddr(t *testing.T) {
 
 func TestAgentManager_Handler_NilAddr(t *testing.T) {
 	oc := cache.NewObjectCache()
-	am := NewAgentManager(oc, 30*time.Second)
+	am := NewAgentManager(oc, 30*time.Second, nil, nil, nil, nil)
 	handler := am.Handler()
 
 	op := &pack.ObjectPack{ObjName: "/test"}
@@ -250,7 +250,7 @@ func TestAgentManager_Handler_NilAddr(t *testing.T) {
 // --- AlertCore tests ---
 
 func TestAlertCore_Handler(t *testing.T) {
-	ac := NewAlertCore(nil)
+	ac := NewAlertCore(nil, nil)
 	handler := ac.Handler()
 
 	ap := &pack.AlertPack{
@@ -268,7 +268,7 @@ func TestAlertCore_Handler(t *testing.T) {
 }
 
 func TestAlertCore_Handler_SetsTime(t *testing.T) {
-	ac := NewAlertCore(nil)
+	ac := NewAlertCore(nil, nil)
 	handler := ac.Handler()
 
 	before := time.Now().UnixMilli()
@@ -281,7 +281,7 @@ func TestAlertCore_Handler_SetsTime(t *testing.T) {
 }
 
 func TestAlertCore_Handler_WrongPackType(t *testing.T) {
-	ac := NewAlertCore(nil)
+	ac := NewAlertCore(nil, nil)
 	handler := ac.Handler()
 	handler(&pack.XLogPack{}, nil) // should not panic
 }
@@ -299,8 +299,8 @@ func TestDispatcherCoreIntegration(t *testing.T) {
 	textCore := NewTextCore(textCache, nil)
 	xlogCore := NewXLogCore(xlogCache, nil, nil)
 	perfCountCore := NewPerfCountCore(counterCache, nil)
-	agentManager := NewAgentManager(objectCache, 30*time.Second)
-	alertCore := NewAlertCore(nil)
+	agentManager := NewAgentManager(objectCache, 30*time.Second, nil, nil, nil, nil)
+	alertCore := NewAlertCore(nil, nil)
 
 	// Wire dispatcher
 	d := NewDispatcher()

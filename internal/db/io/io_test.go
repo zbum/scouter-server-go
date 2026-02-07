@@ -601,6 +601,281 @@ func TestIndexTimeFileMultipleBuckets(t *testing.T) {
 	}
 }
 
+// --- RealKeyFile buffered append tests ---
+
+func TestRealKeyFileBufferedAppendReadBack(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// Append multiple records (all stay in buffer since < 16KB)
+	positions := make([]int64, 10)
+	for i := 0; i < 10; i++ {
+		key := protocol.ToBytesInt(int32(i))
+		val := protocol.ToBytes5(int64(i * 100))
+		pos, err := kf.Append(0, key, val)
+		if err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+		positions[i] = pos
+	}
+
+	// IsDirty should be true (unflushed data in buffer)
+	if !kf.IsDirty() {
+		t.Error("expected IsDirty=true after append")
+	}
+
+	// Read back all records (should trigger flush and return correct data)
+	for i := 0; i < 10; i++ {
+		r, err := kf.GetRecord(positions[i])
+		if err != nil {
+			t.Fatalf("GetRecord %d at pos %d: %v", i, positions[i], err)
+		}
+		gotKey := protocol.ToInt(r.TimeKey, 0)
+		if gotKey != int32(i) {
+			t.Errorf("record %d: expected key %d, got %d", i, i, gotKey)
+		}
+		gotVal := protocol.ToLong5(r.DataPos, 0)
+		if gotVal != int64(i*100) {
+			t.Errorf("record %d: expected dataPos %d, got %d", i, i*100, gotVal)
+		}
+	}
+}
+
+func TestRealKeyFileBufferedChain(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// Build a chain of 5 records: each points back to the previous
+	var prevPos int64
+	positions := make([]int64, 5)
+	for i := 0; i < 5; i++ {
+		key := protocol.ToBytesInt(int32(i))
+		val := protocol.ToBytes5(int64(i))
+		pos, err := kf.Append(prevPos, key, val)
+		if err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+		positions[i] = pos
+		prevPos = pos
+	}
+
+	// Walk the chain backwards from the last record
+	pos := positions[4]
+	for i := 4; i >= 0; i-- {
+		r, err := kf.GetRecord(pos)
+		if err != nil {
+			t.Fatalf("GetRecord at step %d: %v", i, err)
+		}
+		gotKey := protocol.ToInt(r.TimeKey, 0)
+		if gotKey != int32(i) {
+			t.Errorf("chain step %d: expected key %d, got %d", i, i, gotKey)
+		}
+		pos = r.PrevPos
+	}
+	if pos != 0 {
+		t.Errorf("expected chain to end at 0, got %d", pos)
+	}
+}
+
+func TestRealKeyFileAutoFlushOnThreshold(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// Each record is roughly ~20 bytes. Need ~820 records to exceed 16KB.
+	// Append enough records to trigger auto-flush at least once.
+	n := 1000
+	positions := make([]int64, n)
+	for i := 0; i < n; i++ {
+		key := protocol.ToBytesLong(int64(i))
+		val := protocol.ToBytes5(int64(i * 10))
+		pos, err := kf.Append(0, key, val)
+		if err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+		positions[i] = pos
+	}
+
+	// Verify file on disk has data (auto-flush should have written some)
+	fi, err := os.Stat(path + ".kfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Size() <= kfileHeaderSize {
+		t.Errorf("expected file to have flushed data, size=%d", fi.Size())
+	}
+
+	// All records should still be readable
+	for i := 0; i < n; i++ {
+		dp, err := kf.GetDataPos(positions[i])
+		if err != nil {
+			t.Fatalf("GetDataPos %d: %v", i, err)
+		}
+		got := protocol.ToLong5(dp, 0)
+		if got != int64(i*10) {
+			t.Errorf("record %d: expected %d, got %d", i, i*10, got)
+		}
+	}
+}
+
+func TestRealKeyFileGetLengthIncludesBuffer(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	lenBefore := kf.GetLength()
+	if lenBefore != kfileHeaderSize {
+		t.Errorf("expected initial length %d, got %d", kfileHeaderSize, lenBefore)
+	}
+
+	kf.Append(0, []byte("key"), protocol.ToBytes5(100))
+
+	lenAfter := kf.GetLength()
+	if lenAfter <= lenBefore {
+		t.Errorf("expected length to increase after append, before=%d after=%d", lenBefore, lenAfter)
+	}
+}
+
+func TestRealKeyFilePersistenceAfterFlush(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pos, err := kf.Append(0, []byte("persist"), protocol.ToBytes5(777))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Flush and close
+	kf.Close()
+
+	// Reopen and verify
+	kf2, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf2.Close()
+
+	r, err := kf2.GetRecord(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(r.TimeKey) != "persist" {
+		t.Errorf("expected key 'persist', got %q", string(r.TimeKey))
+	}
+	if protocol.ToLong5(r.DataPos, 0) != 777 {
+		t.Errorf("expected dataPos 777, got %d", protocol.ToLong5(r.DataPos, 0))
+	}
+}
+
+func TestRealKeyFileDeleteWithBufferedData(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	pos1, _ := kf.Append(0, []byte("a"), protocol.ToBytes5(1))
+	pos2, _ := kf.Append(pos1, []byte("b"), protocol.ToBytes5(2))
+
+	// Delete first record (triggers flush before positional write)
+	if err := kf.SetDelete(pos1, true); err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify first is deleted, second is not
+	del, _ := kf.IsDeleted(pos1)
+	if !del {
+		t.Error("expected pos1 deleted")
+	}
+	del, _ = kf.IsDeleted(pos2)
+	if del {
+		t.Error("expected pos2 not deleted")
+	}
+}
+
+func TestRealKeyFileFlushIdempotent(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	kf.Append(0, []byte("x"), protocol.ToBytes5(1))
+
+	// Multiple flushes should be safe
+	kf.Flush()
+	kf.Flush()
+	kf.Flush()
+
+	if kf.IsDirty() {
+		t.Error("expected not dirty after flush")
+	}
+}
+
+func TestRealKeyFileInterleavedAppendAndRead(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// Interleave appends and reads to verify flush-before-read works correctly
+	for i := 0; i < 50; i++ {
+		key := protocol.ToBytesInt(int32(i))
+		val := protocol.ToBytes5(int64(i))
+		pos, err := kf.Append(0, key, val)
+		if err != nil {
+			t.Fatalf("append %d: %v", i, err)
+		}
+
+		// Immediately read back (triggers flush)
+		r, err := kf.GetRecord(pos)
+		if err != nil {
+			t.Fatalf("GetRecord %d: %v", i, err)
+		}
+		gotKey := protocol.ToInt(r.TimeKey, 0)
+		if gotKey != int32(i) {
+			t.Errorf("step %d: expected key %d, got %d", i, i, gotKey)
+		}
+	}
+}
+
 func TestIndexTimeFileGetDirect(t *testing.T) {
 	dir := tempDir(t)
 	path := filepath.Join(dir, "tidx")

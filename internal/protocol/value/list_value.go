@@ -25,6 +25,17 @@ func (v *ListValue) Write(o *protocol.DataOutputX) {
 	}
 }
 
+// GetInt returns the int32 value at the given index.
+func (v *ListValue) GetInt(idx int) int32 {
+	if idx < 0 || idx >= len(v.Value) {
+		return 0
+	}
+	if dv, ok := v.Value[idx].(*DecimalValue); ok {
+		return int32(dv.Value)
+	}
+	return 0
+}
+
 func (v *ListValue) Read(d *protocol.DataInputX) error {
 	count, err := d.ReadDecimal()
 	if err != nil {

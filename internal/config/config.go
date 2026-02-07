@@ -227,3 +227,18 @@ func (c *Config) FilePath() string {
 	defer c.mu.RUnlock()
 	return c.filePath
 }
+
+// ConfDir returns the directory containing the config file.
+func (c *Config) ConfDir() string {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.filePath == "" {
+		return ""
+	}
+	return filepath.Dir(c.filePath)
+}
+
+// NetTcpClientSoTimeoutMs returns net_tcp_client_so_timeout_ms (default 8000).
+func (c *Config) NetTcpClientSoTimeoutMs() int {
+	return c.GetInt("net_tcp_client_so_timeout_ms", 8000)
+}
