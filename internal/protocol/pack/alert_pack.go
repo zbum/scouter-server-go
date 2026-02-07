@@ -29,7 +29,12 @@ func (p *AlertPack) Write(o *protocol.DataOutputX) {
 	o.WriteInt(p.ObjHash)
 	o.WriteText(p.Title)
 	o.WriteText(p.Message)
-	value.WriteValue(o, p.Tags)
+	// Java initializes tags = new MapValue(), so always write a MapValue (never NullValue).
+	tags := p.Tags
+	if tags == nil {
+		tags = value.NewMapValue()
+	}
+	value.WriteValue(o, tags)
 }
 
 // Read deserializes the AlertPack from the input stream.

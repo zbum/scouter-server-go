@@ -20,22 +20,29 @@ type User struct {
 
 // SessionManager manages client login sessions.
 type SessionManager struct {
-	mu       sync.RWMutex
-	sessions map[int64]*User
-	password string
+	mu             sync.RWMutex
+	sessions       map[int64]*User
+	accountManager *AccountManager
 }
 
-func NewSessionManager(password string) *SessionManager {
+func NewSessionManager(accountManager *AccountManager) *SessionManager {
 	return &SessionManager{
-		sessions: make(map[int64]*User),
-		password: password,
+		sessions:       make(map[int64]*User),
+		accountManager: accountManager,
 	}
 }
 
 // Login authenticates a user and returns a session token. Returns 0 on failure.
 func (sm *SessionManager) Login(id, pass, ip string) int64 {
-	if sm.password != "" && pass != sm.password {
+	if sm.accountManager != nil && !sm.accountManager.AuthorizeAccount(id, pass) {
 		return 0
+	}
+
+	group := "default"
+	if sm.accountManager != nil {
+		if acct := sm.accountManager.GetAccount(id); acct != nil {
+			group = acct.Group
+		}
 	}
 
 	session := generateSession()
@@ -43,7 +50,7 @@ func (sm *SessionManager) Login(id, pass, ip string) int64 {
 		Session:   session,
 		ID:        id,
 		IP:        ip,
-		Group:     "default",
+		Group:     group,
 		LoginTime: time.Now(),
 	}
 

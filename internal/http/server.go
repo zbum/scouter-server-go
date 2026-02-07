@@ -20,40 +20,56 @@ var startTime = time.Now()
 
 // Server is the HTTP REST API server for Scouter monitoring data.
 type Server struct {
-	port         int
-	objectCache  *cache.ObjectCache
-	counterCache *cache.CounterCache
-	xlogCache    *cache.XLogCache
-	textCache    *cache.TextCache
-	xlogRD       *xlog.XLogRD
-	counterRD    *counter.CounterRD
-	alertRD      *alert.AlertRD
-	httpServer   *http.Server
+	port                 int
+	corsAllowOrigin      string
+	corsAllowCredentials string
+	gzipEnabled          bool
+	objectCache          *cache.ObjectCache
+	counterCache         *cache.CounterCache
+	xlogCache            *cache.XLogCache
+	textCache            *cache.TextCache
+	xlogRD               *xlog.XLogRD
+	counterRD            *counter.CounterRD
+	alertRD              *alert.AlertRD
+	httpServer           *http.Server
 }
 
 // ServerConfig holds all dependencies required to construct a Server.
 type ServerConfig struct {
-	Port         int
-	ObjectCache  *cache.ObjectCache
-	CounterCache *cache.CounterCache
-	XLogCache    *cache.XLogCache
-	TextCache    *cache.TextCache
-	XLogRD       *xlog.XLogRD
-	CounterRD    *counter.CounterRD
-	AlertRD      *alert.AlertRD
+	Port                 int
+	CorsAllowOrigin      string
+	CorsAllowCredentials string
+	GzipEnabled          bool
+	ObjectCache          *cache.ObjectCache
+	CounterCache         *cache.CounterCache
+	XLogCache            *cache.XLogCache
+	TextCache            *cache.TextCache
+	XLogRD               *xlog.XLogRD
+	CounterRD            *counter.CounterRD
+	AlertRD              *alert.AlertRD
 }
 
 // NewServer creates and configures a new HTTP API server.
 func NewServer(cfg ServerConfig) *Server {
+	if cfg.CorsAllowOrigin == "" {
+		cfg.CorsAllowOrigin = "*"
+	}
+	if cfg.CorsAllowCredentials == "" {
+		cfg.CorsAllowCredentials = "true"
+	}
+
 	s := &Server{
-		port:         cfg.Port,
-		objectCache:  cfg.ObjectCache,
-		counterCache: cfg.CounterCache,
-		xlogCache:    cfg.XLogCache,
-		textCache:    cfg.TextCache,
-		xlogRD:       cfg.XLogRD,
-		counterRD:    cfg.CounterRD,
-		alertRD:      cfg.AlertRD,
+		port:                 cfg.Port,
+		corsAllowOrigin:      cfg.CorsAllowOrigin,
+		corsAllowCredentials: cfg.CorsAllowCredentials,
+		gzipEnabled:          cfg.GzipEnabled,
+		objectCache:          cfg.ObjectCache,
+		counterCache:         cfg.CounterCache,
+		xlogCache:            cfg.XLogCache,
+		textCache:            cfg.TextCache,
+		xlogRD:               cfg.XLogRD,
+		counterRD:            cfg.CounterRD,
+		alertRD:              cfg.AlertRD,
 	}
 
 	mux := http.NewServeMux()
@@ -66,9 +82,24 @@ func NewServer(cfg ServerConfig) *Server {
 
 	s.httpServer = &http.Server{
 		Addr:    net.JoinHostPort("", strconv.Itoa(s.port)),
-		Handler: mux,
+		Handler: s.corsMiddleware(mux),
 	}
 	return s
+}
+
+// corsMiddleware adds CORS headers to every HTTP response.
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", s.corsAllowOrigin)
+		w.Header().Set("Access-Control-Allow-Credentials", s.corsAllowCredentials)
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Start begins listening for HTTP connections. It blocks until the server

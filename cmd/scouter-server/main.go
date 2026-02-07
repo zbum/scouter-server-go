@@ -41,7 +41,7 @@ func main() {
 	}
 
 	// --- Configuration ---
-	confFile := "./scouter.conf"
+	confFile := "./conf/scouter.conf"
 	if f := os.Getenv("SCOUTER_CONF"); f != "" {
 		confFile = f
 	}
@@ -155,12 +155,20 @@ func main() {
 	dispatcher.Register(pack.PackTypeAlert, alertCore.Handler())
 	dispatcher.Register(pack.PackTypeSummary, summaryCore.Handler())
 
+	// --- Account Manager ---
+	confDir := cfg.ConfDir()
+	if confDir == "" {
+		confDir = "./conf"
+	}
+	accountManager := login.NewAccountManager(confDir)
+	accountManager.StartWatcher(ctx)
+
 	// --- Login / Session ---
-	sessions := login.NewSessionManager("")
+	sessions := login.NewSessionManager(accountManager)
 
 	// --- TCP service handlers ---
 	registry := service.NewRegistry()
-	service.RegisterLoginHandlers(registry, sessions, Version)
+	service.RegisterLoginHandlers(registry, sessions, accountManager, Version)
 	service.RegisterServerHandlers(registry, Version)
 	service.RegisterObjectHandlers(registry, objectCache, deadTimeout, counterCache, typeManager)
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, deadTimeout, counterRD)
@@ -176,18 +184,30 @@ func main() {
 	service.RegisterServerMgmtHandlers(registry, Version, dataDir)
 	service.RegisterKVHandlers(registry, globalKV, customKV)
 	service.RegisterActiveSpeedHandlers(registry, counterCache, objectCache, deadTimeout)
-	service.RegisterLoginExtHandlers(registry, sessions)
+	service.RegisterLoginExtHandlers(registry, sessions, accountManager)
+	service.RegisterAccountHandlers(registry, accountManager)
 	service.RegisterVisitorHandlers(registry)
 
 	// --- UDP pipeline ---
 	processor := udp.NewNetDataProcessor(dispatcher, 4)
-	udpConfig := udp.DefaultServerConfig()
-	udpConfig.ListenPort = cfg.UDPPort()
+	udpConfig := udp.ServerConfig{
+		ListenIP:   cfg.NetUDPListenIP(),
+		ListenPort: cfg.UDPPort(),
+		BufSize:    cfg.NetUDPPacketBufferSize(),
+		RcvBufSize: cfg.NetUDPSoRcvbufSize(),
+	}
 	udpServer := udp.NewServer(udpConfig, processor)
 
 	// --- TCP server ---
-	tcpConfig := tcp.DefaultServerConfig()
-	tcpConfig.ListenPort = cfg.TCPPort()
+	tcpConfig := tcp.ServerConfig{
+		ListenIP:      cfg.NetTCPListenIP(),
+		ListenPort:    cfg.TCPPort(),
+		ClientTimeout: time.Duration(cfg.NetTcpClientSoTimeoutMs()) * time.Millisecond,
+		AgentConfig: tcp.AgentManagerConfig{
+			KeepaliveInterval: time.Duration(cfg.NetTcpAgentKeepaliveIntervalMs()) * time.Millisecond,
+			GetConnWait:       time.Duration(cfg.NetTcpGetAgentConnectionWaitMs()) * time.Millisecond,
+		},
+	}
 	tcpServer := tcp.NewServer(tcpConfig, registry, sessions)
 
 	// --- Agent proxy handlers (requires tcpServer for agent RPC) ---
@@ -215,18 +235,46 @@ func main() {
 	// --- HTTP API server (optional) ---
 	if cfg.HTTPEnabled() {
 		httpSrv := scouterhttp.NewServer(scouterhttp.ServerConfig{
-			Port:         cfg.HTTPPort(),
-			ObjectCache:  objectCache,
-			CounterCache: counterCache,
-			XLogCache:    xlogCache,
-			TextCache:    textCache,
-			XLogRD:       xlogRD,
-			CounterRD:    counterRD,
-			AlertRD:      alertRD,
+			Port:                 cfg.HTTPPort(),
+			CorsAllowOrigin:      cfg.NetHTTPApiCorsAllowOrigin(),
+			CorsAllowCredentials: cfg.NetHTTPApiCorsAllowCredentials(),
+			GzipEnabled:          cfg.NetHTTPApiGzipEnabled(),
+			ObjectCache:          objectCache,
+			CounterCache:         counterCache,
+			XLogCache:            xlogCache,
+			TextCache:            textCache,
+			XLogRD:               xlogRD,
+			CounterRD:            counterRD,
+			AlertRD:              alertRD,
 		})
 		go func() {
 			if err := httpSrv.Start(ctx); err != nil {
 				slog.Error("HTTP API server error", "error", err)
+			}
+		}()
+	}
+
+	// --- PID file ---
+	pidFile := fmt.Sprintf("%d.scouter", os.Getpid())
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0644); err != nil {
+		slog.Warn("Failed to create PID file", "file", pidFile, "error", err)
+	} else {
+		slog.Info("PID file created", "file", pidFile)
+		defer os.Remove(pidFile)
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if _, err := os.Stat(pidFile); os.IsNotExist(err) {
+						slog.Info("PID file deleted, shutting down", "file", pidFile)
+						cancel()
+						return
+					}
+				}
 			}
 		}()
 	}

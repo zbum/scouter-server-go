@@ -18,9 +18,10 @@ import (
 
 // ServerConfig holds TCP server configuration.
 type ServerConfig struct {
-	ListenIP        string
-	ListenPort      int
-	ClientTimeout   time.Duration
+	ListenIP      string
+	ListenPort    int
+	ClientTimeout time.Duration
+	AgentConfig   AgentManagerConfig
 }
 
 func DefaultServerConfig() ServerConfig {
@@ -28,6 +29,7 @@ func DefaultServerConfig() ServerConfig {
 		ListenIP:      "0.0.0.0",
 		ListenPort:    6100,
 		ClientTimeout: 60 * time.Second,
+		AgentConfig:   DefaultAgentManagerConfig(),
 	}
 }
 
@@ -43,7 +45,7 @@ type Server struct {
 }
 
 func NewServer(config ServerConfig, registry *service.Registry, sessions *login.SessionManager) *Server {
-	mgr := NewAgentManager()
+	mgr := NewAgentManagerWithConfig(config.AgentConfig)
 	return &Server{
 		config:       config,
 		registry:     registry,

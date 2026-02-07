@@ -35,3 +35,9 @@ Thumbs.db
 # Build artifacts
 *.prof
 *.pprof
+
+# Runtime data
+database/
+conf/account.xml
+conf/account_group.xml
+*.scouter

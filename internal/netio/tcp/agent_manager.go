@@ -112,13 +112,47 @@ func (q *agentQueue) drainAll() []*AgentWorker {
 	return result
 }
 
+// AgentManagerConfig holds configurable parameters for the agent connection pool.
+type AgentManagerConfig struct {
+	MaxConnsPerAgent  int
+	KeepaliveInterval time.Duration
+	KeepaliveTimeout  time.Duration
+	GetConnWait       time.Duration
+}
+
+// DefaultAgentManagerConfig returns default agent manager configuration.
+func DefaultAgentManagerConfig() AgentManagerConfig {
+	return AgentManagerConfig{
+		MaxConnsPerAgent:  defaultMaxConnsPerAgent,
+		KeepaliveInterval: defaultKeepaliveInterval,
+		KeepaliveTimeout:  defaultKeepaliveTimeout,
+		GetConnWait:       defaultGetConnWait,
+	}
+}
+
 func NewAgentManager() *AgentManager {
+	return NewAgentManagerWithConfig(DefaultAgentManagerConfig())
+}
+
+func NewAgentManagerWithConfig(cfg AgentManagerConfig) *AgentManager {
+	if cfg.MaxConnsPerAgent <= 0 {
+		cfg.MaxConnsPerAgent = defaultMaxConnsPerAgent
+	}
+	if cfg.KeepaliveInterval <= 0 {
+		cfg.KeepaliveInterval = defaultKeepaliveInterval
+	}
+	if cfg.KeepaliveTimeout <= 0 {
+		cfg.KeepaliveTimeout = defaultKeepaliveTimeout
+	}
+	if cfg.GetConnWait <= 0 {
+		cfg.GetConnWait = defaultGetConnWait
+	}
 	return &AgentManager{
 		agents:            make(map[int32]*agentQueue),
-		maxConnsPerAgent:  defaultMaxConnsPerAgent,
-		keepaliveInterval: defaultKeepaliveInterval,
-		keepaliveTimeout:  defaultKeepaliveTimeout,
-		getConnWait:       defaultGetConnWait,
+		maxConnsPerAgent:  cfg.MaxConnsPerAgent,
+		keepaliveInterval: cfg.KeepaliveInterval,
+		keepaliveTimeout:  cfg.KeepaliveTimeout,
+		getConnWait:       cfg.GetConnWait,
 	}
 }
 

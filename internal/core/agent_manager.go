@@ -87,17 +87,15 @@ func (am *AgentManager) Handler() PackHandler {
 			}
 		}
 
-		slog.Debug("Agent active",
+		slog.Debug("Agent heartbeat",
 			"objName", op.ObjName,
-			"objHash", op.ObjHash,
-			"objType", op.ObjType,
-			"addr", op.Address)
+			"objHash", op.ObjHash)
 	}
 }
 
 func (am *AgentManager) monitorLoop() {
 	slog.Info("AgentManager monitorLoop started", "deadTimeout", am.deadTimeout)
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
 		dead := am.objectCache.MarkDead(am.deadTimeout)

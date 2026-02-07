@@ -16,7 +16,15 @@
       "Bash(/Users/zbum/IdeaProjects/zbum/scouter-server-go/scouter-server)",
       "Bash(xargs cat:*)",
       "Bash(lsof:*)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(xxd:*)",
+      "Bash(ls:*)",
+      "Bash(/private/tmp/claude-501/-Users-zbum-IdeaProjects-zbum-scouter-server-go/875b9a67-70ff-46de-96fc-ec8beecce6ac/scratchpad/scouter-server)",
+      "Bash(xargs:*)",
+      "Bash(for file in /Users/zbum/IdeaProjects/scouter/scouter.server/src/main/scala/scouter/server/netio/service/handle/*.scala)",
+      "Bash(do)",
+      "Bash(basename:*)",
+      "Bash(done)"
     ]
   }
 }

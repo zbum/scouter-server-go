@@ -12,7 +12,7 @@ import (
 )
 
 // RegisterLoginHandlers registers LOGIN and related handlers.
-func RegisterLoginHandlers(r *Registry, sessions *login.SessionManager, version string) {
+func RegisterLoginHandlers(r *Registry, sessions *login.SessionManager, accountManager *login.AccountManager, version string) {
 	r.Register(protocol.LOGIN, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
 		pk, err := pack.ReadPack(din)
 		if err != nil {
@@ -46,7 +46,21 @@ func RegisterLoginHandlers(r *Registry, sessions *login.SessionManager, version 
 				soTimeout = int64(cfg.NetTcpClientSoTimeoutMs())
 			}
 			m.PutStr("server_id", serverID)
-			m.PutStr("type", "default")
+
+			// Set group type and email from account
+			groupType := "default"
+			if accountManager != nil {
+				if acct := accountManager.GetAccount(id); acct != nil {
+					groupType = acct.Group
+					m.PutStr("email", acct.Email)
+				}
+				// Include group policy in login response
+				if policy := accountManager.GetGroupPolicy(groupType); policy != nil {
+					m.Put("policy", policy)
+				}
+			}
+			m.PutStr("type", groupType)
+
 			m.PutStr("version", version)
 
 			tz, _ := time.Now().Zone()
@@ -85,7 +99,7 @@ func RegisterLoginHandlers(r *Registry, sessions *login.SessionManager, version 
 }
 
 // RegisterLoginExtHandlers registers CHECK_LOGIN and GET_LOGIN_LIST handlers.
-func RegisterLoginExtHandlers(r *Registry, sessions *login.SessionManager) {
+func RegisterLoginExtHandlers(r *Registry, sessions *login.SessionManager, accountManager *login.AccountManager) {
 
 	// CHECK_LOGIN: verify user credentials without creating a session.
 	r.Register(protocol.CHECK_LOGIN, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
@@ -97,9 +111,10 @@ func RegisterLoginExtHandlers(r *Registry, sessions *login.SessionManager) {
 		id := m.GetText("id")
 		pass := m.GetText("pass")
 
-		// Attempt login to verify credentials, then check if it succeeded
-		session := sessions.Login(id, pass, "")
-		ok := session != 0
+		ok := false
+		if accountManager != nil {
+			ok = accountManager.AuthorizeAccount(id, pass)
+		}
 
 		result := &pack.MapPack{}
 		result.Put("result", &value.BooleanValue{Value: ok})

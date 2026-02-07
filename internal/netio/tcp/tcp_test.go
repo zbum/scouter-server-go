@@ -22,14 +22,14 @@ const testVersion = "1.0.0-test"
 func startTestServer(t *testing.T) (net.Addr, context.CancelFunc, *cache.ObjectCache, *cache.CounterCache, *cache.TextCache, *cache.XLogCache) {
 	t.Helper()
 
-	sessions := login.NewSessionManager("")
+	sessions := login.NewSessionManager(nil)
 	textCache := cache.NewTextCache()
 	xlogCache := cache.NewXLogCache(1000)
 	counterCache := cache.NewCounterCache()
 	objectCache := cache.NewObjectCache()
 
 	registry := service.NewRegistry()
-	service.RegisterLoginHandlers(registry, sessions, testVersion)
+	service.RegisterLoginHandlers(registry, sessions, nil, testVersion)
 	service.RegisterServerHandlers(registry, testVersion)
 	service.RegisterObjectHandlers(registry, objectCache, 30*time.Second, counterCache, counter.NewObjectTypeManager())
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, 30*time.Second, nil)
