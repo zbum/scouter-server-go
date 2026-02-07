@@ -1,0 +1,26 @@
+package util
+
+import "time"
+
+const (
+	MillisPerSecond = 1000
+	MillisPerMinute = 60 * MillisPerSecond
+	MillisPerHour   = 60 * MillisPerMinute
+	MillisPerDay    = 24 * MillisPerHour
+	SecondsPerDay   = 86400
+)
+
+// GetDateMillis returns the milliseconds elapsed since midnight (local time) for the given
+// Unix timestamp in milliseconds. This matches Java's DateUtil.getDateMillis().
+func GetDateMillis(timeMs int64) int {
+	t := time.UnixMilli(timeMs)
+	y, m, d := t.Date()
+	midnight := time.Date(y, m, d, 0, 0, 0, 0, t.Location())
+	return int(t.Sub(midnight).Milliseconds())
+}
+
+// FormatDate returns the date part of a Unix timestamp in milliseconds as "YYYYMMDD".
+func FormatDate(timeMs int64) string {
+	t := time.UnixMilli(timeMs)
+	return t.Format("20060102")
+}
