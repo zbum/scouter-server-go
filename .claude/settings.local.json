@@ -4,7 +4,9 @@
       "Bash(test:*)",
       "Bash(find:*)",
       "Bash(make build:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(echo:*)"
     ]
   }
 }

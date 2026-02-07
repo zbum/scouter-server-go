@@ -1,5 +1,5 @@
 # Binaries
-scouter-server
+/scouter-server
 dist/
 *.exe
 *.exe~
