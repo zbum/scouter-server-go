@@ -74,21 +74,18 @@ func RegisterAccountHandlers(r *Registry, accountManager *login.AccountManager) 
 	})
 
 	// LIST_ACCOUNT: return all accounts as BlobValue streams.
+	// Client sends null param and reads each response via readValue() (not readPack).
 	r.Register(protocol.LIST_ACCOUNT, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
-		pack.ReadPack(din) // consume input
-
 		accounts := accountManager.GetAccountList()
 		for _, acct := range accounts {
-			m := &pack.MapPack{}
-			m.Put("account", &value.BlobValue{Value: acct.ToBytes()})
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
-			pack.WritePack(dout, m)
+			value.WriteValue(dout, &value.BlobValue{Value: acct.ToBytes()})
 		}
 	})
 
 	// LIST_ACCOUNT_GROUP: return all group names.
+	// Client sends null param.
 	r.Register(protocol.LIST_ACCOUNT_GROUP, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
-		pack.ReadPack(din) // consume input
 
 		groups := accountManager.GetGroupList()
 
@@ -104,8 +101,8 @@ func RegisterAccountHandlers(r *Registry, accountManager *login.AccountManager) 
 	})
 
 	// GET_GROUP_POLICY_ALL: return all group policies.
+	// Client sends null param.
 	r.Register(protocol.GET_GROUP_POLICY_ALL, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
-		pack.ReadPack(din) // consume input
 
 		allPolicies := accountManager.GetAllGroupPolicies()
 
