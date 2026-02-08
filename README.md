@@ -48,6 +48,11 @@ make help
 make run
 ```
 
+## Documentation
+
+- [통신 프로토콜 개요](docs/protocol-overview.md) — 바이너리 직렬화, UDP/TCP 패킷 구조, Pack/Value 타입 체계
+- [TCP 에이전트 프로토콜 상세](docs/tcp-agent-protocol.md) — 에이전트 연결 수립, 커넥션 풀, Keepalive, RPC 호출 패턴
+
 ## License
 
 Apache-2.0
