@@ -27,6 +27,13 @@ func FormatDate(timeMs int64) string {
 	return t.Format("20060102")
 }
 
+// HHMM returns the "HHmm" string for a Unix timestamp in milliseconds.
+// For example, 14:30 → "1430", 09:05 → "0905".
+func HHMM(timeMs int64) string {
+	t := time.UnixMilli(timeMs)
+	return t.Format("1504")
+}
+
 // DateToMillis converts a "YYYYMMDD" date string to Unix millis at midnight local time.
 func DateToMillis(date string) int64 {
 	t, err := time.ParseInLocation("20060102", date, time.Now().Location())

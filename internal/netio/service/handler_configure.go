@@ -2,6 +2,7 @@ package service
 
 import (
 	"os"
+	"strconv"
 
 	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/counter"
@@ -97,29 +98,179 @@ func RegisterConfigureHandlers(r *Registry, version string, typeManager *counter
 		// Read param pack
 		pack.ReadPack(din)
 
-		// Create a map of known config keys with descriptions
-		configDescs := map[string]string{
-			"server_id":              "Server identifier (default: 0)",
-			"net_udp_listen_port":    "UDP listen port for agent data (default: 6100)",
-			"net_tcp_listen_port":    "TCP listen port for client connections (default: 6100)",
-			"net_http_port":          "HTTP API port (default: 6180)",
-			"net_http_enabled":       "Enable HTTP API server (default: false)",
-			"db_dir":                 "Database directory path (default: ./database)",
-			"log_dir":                "Log directory path (default: ./logs)",
-			"log_rotation_enabled":   "Enable log rotation (default: true)",
-			"log_keep_days":          "Number of days to keep log files (default: 30)",
-			"db_keep_days":           "Number of days to keep database files (default: 30)",
-			"db_max_disk_usage_pct":  "Maximum disk usage percentage (default: 80)",
-			"object_deadtime_ms":     "Object dead time in milliseconds (default: 30000)",
-			"xlog_queue_size":        "XLog queue size (default: 10000)",
-			"debug":                  "Enable debug logging (default: false)",
+		metaMap := config.ConfigMetaMap()
+		resp := &pack.MapPack{}
+		for key, meta := range metaMap {
+			resp.PutStr(key, meta.Desc)
+		}
+
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+}
+
+// RegisterConfigureExtHandlers registers configuration handlers that require
+// agent proxy support (hybrid server/agent handlers).
+func RegisterConfigureExtHandlers(r *Registry, caller AgentCaller) {
+
+	// CONFIGURE_DESC: Return config key descriptions.
+	// objHash==0 → server config, objHash>0 → proxy to agent.
+	r.Register(protocol.CONFIGURE_DESC, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pk, err := pack.ReadPack(din)
+		if err != nil {
+			return
+		}
+		param := pk.(*pack.MapPack)
+		objHash := param.GetInt("objHash")
+
+		if objHash == 0 {
+			metaMap := config.ConfigMetaMap()
+			resp := &pack.MapPack{}
+			for key, meta := range metaMap {
+				resp.PutStr(key, meta.Desc)
+			}
+			dout.WriteByte(protocol.FLAG_HAS_NEXT)
+			pack.WritePack(dout, resp)
+		} else {
+			result := caller.AgentCallSingle(objHash, protocol.CONFIGURE_DESC, param)
+			if result != nil {
+				dout.WriteByte(protocol.FLAG_HAS_NEXT)
+				pack.WritePack(dout, result)
+			}
+		}
+	})
+
+	// CONFIGURE_VALUE_TYPE: Return config key value types (1=string, 2=num, 3=bool).
+	// objHash==0 → server config, objHash>0 → proxy to agent.
+	r.Register(protocol.CONFIGURE_VALUE_TYPE, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pk, err := pack.ReadPack(din)
+		if err != nil {
+			return
+		}
+		param := pk.(*pack.MapPack)
+		objHash := param.GetInt("objHash")
+
+		if objHash == 0 {
+			metaMap := config.ConfigMetaMap()
+			resp := &pack.MapPack{}
+			for key, meta := range metaMap {
+				resp.PutStr(key, strconv.Itoa(meta.ValueType))
+			}
+			dout.WriteByte(protocol.FLAG_HAS_NEXT)
+			pack.WritePack(dout, resp)
+		} else {
+			result := caller.AgentCallSingle(objHash, protocol.CONFIGURE_VALUE_TYPE, param)
+			if result != nil {
+				dout.WriteByte(protocol.FLAG_HAS_NEXT)
+				pack.WritePack(dout, result)
+			}
+		}
+	})
+
+	// CONFIGURE_VALUE_TYPE_DESC: Return detailed metadata for complex value types.
+	// objHash==0 → server (currently empty), objHash>0 → proxy to agent.
+	r.Register(protocol.CONFIGURE_VALUE_TYPE_DESC, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pk, err := pack.ReadPack(din)
+		if err != nil {
+			return
+		}
+		param := pk.(*pack.MapPack)
+		objHash := param.GetInt("objHash")
+
+		if objHash == 0 {
+			// Server has no complex value types for now
+			resp := &pack.MapPack{}
+			dout.WriteByte(protocol.FLAG_HAS_NEXT)
+			pack.WritePack(dout, resp)
+		} else {
+			result := caller.AgentCallSingle(objHash, protocol.CONFIGURE_VALUE_TYPE_DESC, param)
+			if result != nil {
+				dout.WriteByte(protocol.FLAG_HAS_NEXT)
+				pack.WritePack(dout, result)
+			}
+		}
+	})
+
+	// GET_CONFIGURE_COUNTERS_SITE: Read custom counters.site.xml from conf dir.
+	r.Register(protocol.GET_CONFIGURE_COUNTERS_SITE, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		resp := &pack.MapPack{}
+		contents := ""
+		if cfg := config.Get(); cfg != nil {
+			confDir := cfg.ConfDir()
+			if confDir != "" {
+				if data, err := os.ReadFile(confDir + "/counters.site.xml"); err == nil {
+					contents = string(data)
+				}
+			}
+		}
+		resp.PutStr("contents", contents)
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+
+	// SET_CONFIGURE_COUNTERS_SITE: Save custom counters.site.xml to conf dir.
+	r.Register(protocol.SET_CONFIGURE_COUNTERS_SITE, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pk, err := pack.ReadPack(din)
+		if err != nil {
+			return
+		}
+		param := pk.(*pack.MapPack)
+		contents := param.GetText("contents")
+
+		success := false
+		if cfg := config.Get(); cfg != nil {
+			confDir := cfg.ConfDir()
+			if confDir != "" {
+				if err := os.WriteFile(confDir+"/counters.site.xml", []byte(contents), 0644); err == nil {
+					success = true
+				}
+			}
 		}
 
 		resp := &pack.MapPack{}
-		for key, desc := range configDescs {
-			resp.PutStr(key, desc)
+		resp.PutStr("result", strconv.FormatBool(success))
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+
+	// GET_CONFIGURE_TELEGRAF: Read telegraf config file.
+	r.Register(protocol.GET_CONFIGURE_TELEGRAF, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		resp := &pack.MapPack{}
+		contents := ""
+		if cfg := config.Get(); cfg != nil {
+			confDir := cfg.ConfDir()
+			if confDir != "" {
+				if data, err := os.ReadFile(confDir + "/scouter-telegraf.xml"); err == nil {
+					contents = string(data)
+				}
+			}
+		}
+		resp.PutStr("tgConfigContents", contents)
+		dout.WriteByte(protocol.FLAG_HAS_NEXT)
+		pack.WritePack(dout, resp)
+	})
+
+	// SET_CONFIGURE_TELEGRAF: Save telegraf config file.
+	r.Register(protocol.SET_CONFIGURE_TELEGRAF, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
+		pk, err := pack.ReadPack(din)
+		if err != nil {
+			return
+		}
+		param := pk.(*pack.MapPack)
+		contents := param.GetText("tgConfigContents")
+
+		success := false
+		if cfg := config.Get(); cfg != nil {
+			confDir := cfg.ConfDir()
+			if confDir != "" {
+				if err := os.WriteFile(confDir+"/scouter-telegraf.xml", []byte(contents), 0644); err == nil {
+					success = true
+				}
+			}
 		}
 
+		resp := &pack.MapPack{}
+		resp.PutStr("result", strconv.FormatBool(success))
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)
 		pack.WritePack(dout, resp)
 	})

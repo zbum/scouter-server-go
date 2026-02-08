@@ -36,6 +36,28 @@ func (v *ListValue) GetInt(idx int) int32 {
 	return 0
 }
 
+// GetString returns the string value at the given index.
+func (v *ListValue) GetString(idx int) string {
+	if idx < 0 || idx >= len(v.Value) {
+		return ""
+	}
+	if tv, ok := v.Value[idx].(*TextValue); ok {
+		return tv.Value
+	}
+	return ""
+}
+
+// GetLong returns the int64 value at the given index.
+func (v *ListValue) GetLong(idx int) int64 {
+	if idx < 0 || idx >= len(v.Value) {
+		return 0
+	}
+	if dv, ok := v.Value[idx].(*DecimalValue); ok {
+		return dv.Value
+	}
+	return 0
+}
+
 func (v *ListValue) Read(d *protocol.DataInputX) error {
 	count, err := d.ReadDecimal()
 	if err != nil {

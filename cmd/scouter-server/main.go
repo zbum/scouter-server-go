@@ -187,6 +187,7 @@ func main() {
 	service.RegisterLoginExtHandlers(registry, sessions, accountManager)
 	service.RegisterAccountHandlers(registry, accountManager)
 	service.RegisterVisitorHandlers(registry)
+	service.RegisterAlertExtHandlers(registry, summaryRD)
 
 	// --- UDP pipeline ---
 	processor := udp.NewNetDataProcessor(dispatcher, 4)
@@ -212,6 +213,7 @@ func main() {
 
 	// --- Agent proxy handlers (requires tcpServer for agent RPC) ---
 	service.RegisterAgentProxyHandlers(registry, tcpServer, objectCache, deadTimeout)
+	service.RegisterConfigureExtHandlers(registry, tcpServer)
 
 	// --- Day container purger ---
 	purger := db.NewDayContainerPurger(cfg.DayContainerKeepHours(),

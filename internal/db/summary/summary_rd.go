@@ -62,6 +62,19 @@ func (r *SummaryRD) ReadRange(date string, stype byte, stime, etime int64, handl
 	})
 }
 
+// ReadRangeWithTime reads summaries in a time range and passes both timeMs and data to the handler.
+func (r *SummaryRD) ReadRangeWithTime(date string, stype byte, stime, etime int64, handler func(timeMs int64, data []byte)) error {
+	container, err := r.getContainer(date, stype)
+	if err != nil {
+		return err
+	}
+	if container == nil {
+		return nil
+	}
+
+	return container.ReadRange(stime, etime, handler)
+}
+
 // PurgeOldDays closes day containers not in the keepDates set.
 func (r *SummaryRD) PurgeOldDays(keepDates map[string]bool) {
 	r.mu.Lock()
