@@ -66,7 +66,7 @@ func TestXLogReadByTxid(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil, xlog.NewXLogWR(baseDir))
 
 	// Build request
 	param := &pack.MapPack{}
@@ -124,7 +124,7 @@ func TestXLogReadByTxidNotFound(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil, xlog.NewXLogWR(baseDir))
 
 	param := &pack.MapPack{}
 	param.PutStr("date", "20260207")
@@ -183,7 +183,7 @@ func TestXLogReadByGxid(t *testing.T) {
 	defer profileRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, reader, profileRD, nil)
+	RegisterXLogReadHandlers(registry, reader, profileRD, nil, xlog.NewXLogWR(baseDir))
 
 	param := &pack.MapPack{}
 	param.PutStr("date", date)
@@ -261,7 +261,7 @@ func TestTranxProfile(t *testing.T) {
 	defer xlogRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR2)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR2, xlog.NewXLogWR(baseDir))
 
 	param := &pack.MapPack{}
 	param.PutStr("date", date)
@@ -318,7 +318,7 @@ func TestTranxProfileNotFound(t *testing.T) {
 	defer profileWR.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, profileWR, xlog.NewXLogWR(baseDir))
 
 	param := &pack.MapPack{}
 	param.PutStr("date", "20260207")
@@ -629,7 +629,7 @@ func TestTranxLoadTimeGroup(t *testing.T) {
 	defer xlogRD.Close()
 
 	registry := NewRegistry()
-	RegisterXLogReadHandlers(registry, xlogRD, nil, nil)
+	RegisterXLogReadHandlers(registry, xlogRD, nil, nil, xlog.NewXLogWR(baseDir))
 
 	// Test without filter - should get all 3 + 1 metadata pack = 4 HAS_NEXT
 	param := &pack.MapPack{}
@@ -669,9 +669,9 @@ func TestTranxLoadTimeGroup(t *testing.T) {
 		count++
 	}
 
-	// 1 metadata MapPack + 3 XLogPacks
-	if count != 4 {
-		t.Errorf("expected 4 packs (1 metadata + 3 xlogs), got %d", count)
+	// 3 XLogPacks (no metadata)
+	if count != 3 {
+		t.Errorf("expected 3 xlogs, got %d", count)
 	}
 
 	// Test with objHash filter - should get only objHash=100 (2 entries) + 1 metadata
@@ -705,9 +705,9 @@ func TestTranxLoadTimeGroup(t *testing.T) {
 		count2++
 	}
 
-	// 1 metadata + 2 filtered xlogs
-	if count2 != 3 {
-		t.Errorf("expected 3 packs (1 metadata + 2 filtered xlogs), got %d", count2)
+	// 2 filtered xlogs (no metadata)
+	if count2 != 2 {
+		t.Errorf("expected 2 filtered xlogs, got %d", count2)
 	}
 
 	// Verify V2 is also registered with the same handler

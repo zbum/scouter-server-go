@@ -130,7 +130,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	switch cafe {
 	case uint32(protocol.TCP_CLIENT):
 		defer conn.Close()
-		slog.Info("TCP client connected", "addr", remoteAddr)
+		slog.Debug("TCP client connected", "addr", remoteAddr)
 		s.handleClient(ctx, reader, writer, remoteAddr)
 
 	case uint32(protocol.TCP_AGENT), uint32(protocol.TCP_AGENT_V2):
@@ -209,6 +209,11 @@ func (s *Server) handleClient(ctx context.Context, reader io.Reader, writer *buf
 		if handler != nil {
 			handler(din, dout, sessionOk)
 		} else {
+			// Consume the request pack to keep the stream in sync.
+			// All Scouter TCP commands send a request pack after the
+			// command text and session ID. If we don't consume it,
+			// the leftover bytes corrupt the next command read.
+			pack.ReadPack(din)
 			slog.Warn("TCP unknown command", "addr", remoteAddr, "cmd", cmd)
 		}
 

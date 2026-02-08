@@ -137,6 +137,18 @@ func (p *MapPack) GetList(key string) *value.ListValue {
 	return nil
 }
 
+// GetBoolean retrieves a boolean value by key.
+func (p *MapPack) GetBoolean(key string) bool {
+	v := p.Get(key)
+	if v == nil {
+		return false
+	}
+	if bv, ok := v.(*value.BooleanValue); ok {
+		return bv.Value
+	}
+	return false
+}
+
 // Size returns the number of entries in the map.
 func (p *MapPack) Size() int {
 	return len(p.Table)

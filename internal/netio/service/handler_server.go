@@ -25,4 +25,5 @@ func RegisterServerHandlers(r *Registry, version string) {
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)
 		pack.WritePack(dout, resp)
 	})
+
 }

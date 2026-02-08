@@ -1,0 +1,17 @@
+[Unit]
+Description=Scouter Server (Go)
+After=network.target
+
+[Service]
+Type=simple
+User=scouter
+Group=scouter
+WorkingDirectory=/opt/scouter-server
+ExecStart=/opt/scouter-server/scouter-server
+Environment=SCOUTER_CONF=/opt/scouter-server/conf/scouter.conf
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

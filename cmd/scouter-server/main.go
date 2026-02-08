@@ -135,7 +135,8 @@ func main() {
 
 	// --- Core processors ---
 	textCore := core.NewTextCore(textCache, textWR)
-	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR)
+	xlogGroupPerf := core.NewXLogGroupPerf(textCache)
+	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR, xlogGroupPerf)
 	perfCountCore := core.NewPerfCountCore(counterCache, counterWR)
 	profileCore := core.NewProfileCore(profileWR)
 	deadTimeout := time.Duration(cfg.ObjectDeadTimeMs()) * time.Millisecond
@@ -154,6 +155,14 @@ func main() {
 	dispatcher.Register(pack.PackTypeObject, agentManager.Handler())
 	dispatcher.Register(pack.PackTypeAlert, alertCore.Handler())
 	dispatcher.Register(pack.PackTypeSummary, summaryCore.Handler())
+
+	// --- Zipkin span ingestion (optional) ---
+	if cfg.ZipkinEnabled() {
+		spanCore := core.NewSpanCore(xlogCache, xlogWR, objectCache, profileWR, textCache)
+		dispatcher.Register(pack.PackTypeSpan, spanCore.Handler())
+		dispatcher.Register(pack.PackTypeSpanContainer, spanCore.ContainerHandler())
+		slog.Info("Zipkin span ingestion enabled")
+	}
 
 	// --- Account Manager ---
 	confDir := cfg.ConfDir()
@@ -174,7 +183,7 @@ func main() {
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, deadTimeout, counterRD)
 	service.RegisterXLogHandlers(registry, xlogCache, xlogRD)
 	service.RegisterTextHandlers(registry, textCache, textRD)
-	service.RegisterXLogReadHandlers(registry, xlogRD, profileRD, profileWR)
+	service.RegisterXLogReadHandlers(registry, xlogRD, profileRD, profileWR, xlogWR)
 	service.RegisterCounterReadHandlers(registry, counterRD, objectCache, deadTimeout)
 	service.RegisterAlertHandlers(registry, alertRD, alertCache)
 	service.RegisterSummaryHandlers(registry, summaryRD)
@@ -188,6 +197,7 @@ func main() {
 	service.RegisterAccountHandlers(registry, accountManager)
 	service.RegisterVisitorHandlers(registry)
 	service.RegisterAlertExtHandlers(registry, summaryRD)
+	service.RegisterGroupHandlers(registry, xlogGroupPerf, textCache)
 
 	// --- UDP pipeline ---
 	processor := udp.NewNetDataProcessor(dispatcher, 4)

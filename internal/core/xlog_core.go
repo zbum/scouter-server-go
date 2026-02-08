@@ -14,18 +14,20 @@ import (
 
 // XLogCore processes incoming XLogPack data, caching and storing transaction logs.
 type XLogCore struct {
-	xlogCache *cache.XLogCache
-	xlogWR    *xlog.XLogWR
-	profileWR *profile.ProfileWR
-	queue     chan *pack.XLogPack
+	xlogCache     *cache.XLogCache
+	xlogWR        *xlog.XLogWR
+	profileWR     *profile.ProfileWR
+	xlogGroupPerf *XLogGroupPerf
+	queue         chan *pack.XLogPack
 }
 
-func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR) *XLogCore {
+func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR, xlogGroupPerf *XLogGroupPerf) *XLogCore {
 	xc := &XLogCore{
-		xlogCache: xlogCache,
-		xlogWR:    xlogWR,
-		profileWR: profileWR,
-		queue:     make(chan *pack.XLogPack, 4096),
+		xlogCache:     xlogCache,
+		xlogWR:        xlogWR,
+		profileWR:     profileWR,
+		xlogGroupPerf: xlogGroupPerf,
+		queue:         make(chan *pack.XLogPack, 4096),
 	}
 	go xc.run()
 	return xc
@@ -50,11 +52,21 @@ func (xc *XLogCore) Handler() PackHandler {
 
 func (xc *XLogCore) run() {
 	for xp := range xc.queue {
+		// Derive group hash from service URL if not already set (before serialization)
+		if xc.xlogGroupPerf != nil {
+			xc.xlogGroupPerf.Process(xp)
+		}
+
 		// Serialize and cache for real-time streaming
 		o := protocol.NewDataOutputX()
 		pack.WritePack(o, xp)
 		b := o.ToByteArray()
 		xc.xlogCache.Put(xp.ObjHash, xp.Elapsed, xp.Error != 0, b)
+
+		// Aggregate by service group for real-time throughput display
+		if xc.xlogGroupPerf != nil {
+			xc.xlogGroupPerf.Add(xp)
+		}
 
 		slog.Debug("XLogCore processing",
 			"objHash", xp.ObjHash,

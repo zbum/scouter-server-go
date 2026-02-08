@@ -124,6 +124,25 @@ func (r *XLogRD) ReadByGxid(date string, gxid int64, handler func(data []byte)) 
 	return nil
 }
 
+// ReadFromEndTime reads XLog entries within a time range in reverse order.
+func (r *XLogRD) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte)) error {
+	container, err := r.getContainer(date)
+	if err != nil {
+		return err
+	}
+	if container == nil {
+		return nil
+	}
+
+	return container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) {
+		offset := protocol.ToLong5(dataPos, 0)
+		data, err := container.data.Read(offset)
+		if err == nil && data != nil {
+			handler(data)
+		}
+	})
+}
+
 // PurgeOldDays closes day containers not in the keepDates set.
 func (r *XLogRD) PurgeOldDays(keepDates map[string]bool) {
 	r.mu.Lock()

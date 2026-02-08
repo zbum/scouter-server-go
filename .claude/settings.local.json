@@ -24,7 +24,20 @@
       "Bash(for file in /Users/zbum/IdeaProjects/scouter/scouter.server/src/main/scala/scouter/server/netio/service/handle/*.scala)",
       "Bash(do)",
       "Bash(basename:*)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(go version:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(make dist-all:*)",
+      "Bash(tar:*)",
+      "Bash(zipinfo:*)",
+      "WebSearch",
+      "WebFetch(domain:zipkin.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(xattr:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(go vet:*)"
     ]
   }
 }

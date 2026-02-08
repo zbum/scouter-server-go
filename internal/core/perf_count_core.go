@@ -3,6 +3,7 @@ package core
 import (
 	"log/slog"
 	"net"
+	"time"
 
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/counter"
@@ -35,6 +36,9 @@ func (pc *PerfCountCore) Handler() PackHandler {
 		cp, ok := p.(*pack.PerfCounterPack)
 		if !ok {
 			return
+		}
+		if cp.Time == 0 {
+			cp.Time = time.Now().UnixMilli()
 		}
 		select {
 		case pc.queue <- cp:

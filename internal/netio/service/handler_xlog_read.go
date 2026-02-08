@@ -12,7 +12,9 @@ import (
 )
 
 // RegisterXLogReadHandlers registers handlers that read XLog data from storage.
-func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profile.ProfileRD, profileWR *profile.ProfileWR) {
+// xlogWR is used for reading the current day's data (always up-to-date in memory),
+// with fallback to xlogRD for dates not held by the writer.
+func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profile.ProfileRD, profileWR *profile.ProfileWR, xlogWR *xlog.XLogWR) {
 
 	// XLOG_READ_BY_TXID: retrieve a single XLog by transaction ID.
 	r.Register(protocol.XLOG_READ_BY_TXID, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
@@ -24,7 +26,11 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := param.GetText("date")
 		txid := param.GetLong("txid")
 
-		data, err := xlogRD.GetByTxid(date, txid)
+		// Try writer first (current day), then fall back to reader
+		data, found, err := xlogWR.GetByTxid(date, txid)
+		if !found {
+			data, err = xlogRD.GetByTxid(date, txid)
+		}
 		if err != nil || data == nil {
 			return
 		}
@@ -43,13 +49,18 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := param.GetText("date")
 		gxid := param.GetLong("gxid")
 
-		xlogRD.ReadByGxid(date, gxid, func(data []byte) {
+		gxidHandler := func(data []byte) {
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
-		})
+		}
+		if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
+			xlogRD.ReadByGxid(date, gxid, gxidHandler)
+		}
 	})
 
 	// TRANX_LOAD_TIME_GROUP: load XLogs by time range with optional objHash filter.
+	// Try xlogWR first (which holds the up-to-date in-memory index for the
+	// current day), then fall back to xlogRD for dates the writer doesn't hold.
 	tranxLoadTimeGroupHandler := func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
 		pk, err := pack.ReadPack(din)
 		if err != nil {
@@ -59,6 +70,8 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := param.GetText("date")
 		stime := param.GetLong("stime")
 		etime := param.GetLong("etime")
+		max := param.GetInt("max")
+		rev := param.GetBoolean("reverse")
 
 		// Build objHash filter if present
 		objHashFilter := make(map[int32]bool)
@@ -71,14 +84,11 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			}
 		}
 
-		// First packet: metadata
-		outparam := &pack.MapPack{}
-		dout.WriteByte(protocol.FLAG_HAS_NEXT)
-		pack.WritePack(dout, outparam)
-
-		// Stream XLog data
-		xlogRD.ReadByTime(date, stime, etime, func(data []byte) {
-			// If filter exists, deserialize to check objHash
+		cnt := 0
+		dataHandler := func(data []byte) {
+			if max > 0 && cnt >= int(max) {
+				return
+			}
 			if len(objHashFilter) > 0 {
 				innerDin := protocol.NewDataInputX(data)
 				xp, err := pack.ReadPack(innerDin)
@@ -93,7 +103,20 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
-		})
+			cnt++
+		}
+
+		// Try xlogWR first (current day has up-to-date in-memory index),
+		// fall back to xlogRD for past dates.
+		if rev {
+			if found, _ := xlogWR.ReadFromEndTime(date, stime, etime, dataHandler); !found {
+				xlogRD.ReadFromEndTime(date, stime, etime, dataHandler)
+			}
+		} else {
+			if found, _ := xlogWR.ReadByTime(date, stime, etime, dataHandler); !found {
+				xlogRD.ReadByTime(date, stime, etime, dataHandler)
+			}
+		}
 	}
 	r.Register(protocol.TRANX_LOAD_TIME_GROUP, tranxLoadTimeGroupHandler)
 	r.Register(protocol.TRANX_LOAD_TIME_GROUP_V2, tranxLoadTimeGroupHandler)
@@ -180,7 +203,10 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 				continue
 			}
 			txid := dv.Value
-			data, err := xlogRD.GetByTxid(date, txid)
+			data, found, err := xlogWR.GetByTxid(date, txid)
+			if !found {
+				data, err = xlogRD.GetByTxid(date, txid)
+			}
 			if err != nil || data == nil {
 				continue
 			}
@@ -202,16 +228,19 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := util.FormatDate(stime)
 		date2 := util.FormatDate(etime)
 
-		xlogRD.ReadByGxid(date, gxid, func(data []byte) {
+		gxidHandler := func(data []byte) {
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
-		})
+		}
+
+		if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
+			xlogRD.ReadByGxid(date, gxid, gxidHandler)
+		}
 
 		if date != date2 {
-			xlogRD.ReadByGxid(date2, gxid, func(data []byte) {
-				dout.WriteByte(protocol.FLAG_HAS_NEXT)
-				dout.Write(data)
-			})
+			if found, _ := xlogWR.ReadByGxid(date2, gxid, gxidHandler); !found {
+				xlogRD.ReadByGxid(date2, gxid, gxidHandler)
+			}
 		}
 	})
 
@@ -227,17 +256,23 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		gxid := param.GetLong("gxid")
 
 		if txid != 0 {
-			data, err := xlogRD.GetByTxid(date, txid)
+			data, found, err := xlogWR.GetByTxid(date, txid)
+			if !found {
+				data, err = xlogRD.GetByTxid(date, txid)
+			}
 			if err == nil && data != nil {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				dout.Write(data)
 			}
 		}
 		if gxid != 0 {
-			xlogRD.ReadByGxid(date, gxid, func(data []byte) {
+			gxidHandler := func(data []byte) {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				dout.Write(data)
-			})
+			}
+			if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
+				xlogRD.ReadByGxid(date, gxid, gxidHandler)
+			}
 		}
 	})
 
@@ -255,7 +290,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := util.FormatDate(stime)
 		date2 := util.FormatDate(etime)
 
-		handler := func(data []byte) {
+		searchHandler := func(data []byte) {
 			if objHash != 0 {
 				innerDin := protocol.NewDataInputX(data)
 				xp, err := pack.ReadPack(innerDin)
@@ -272,12 +307,18 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			dout.Write(data)
 		}
 
+		readByTime := func(d string, s, e int64) {
+			if found, _ := xlogWR.ReadByTime(d, s, e, searchHandler); !found {
+				xlogRD.ReadByTime(d, s, e, searchHandler)
+			}
+		}
+
 		if date == date2 {
-			xlogRD.ReadByTime(date, stime, etime, handler)
+			readByTime(date, stime, etime)
 		} else {
 			mtime := util.DateToMillis(date2)
-			xlogRD.ReadByTime(date, stime, mtime-1, handler)
-			xlogRD.ReadByTime(date2, mtime, etime, handler)
+			readByTime(date, stime, mtime-1)
+			readByTime(date2, mtime, etime)
 		}
 	})
 }

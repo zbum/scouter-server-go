@@ -35,9 +35,11 @@ func (p *PerfCounterPack) Read(d *protocol.DataInputX) error {
 	if p.ObjName, err = d.ReadText(); err != nil {
 		return err
 	}
-	if p.TimeType, err = d.ReadByte(); err != nil {
+	tt, err := d.ReadByte()
+	if err != nil {
 		return err
 	}
+	p.TimeType = tt
 
 	val, err := value.ReadValue(d)
 	if err != nil {

@@ -637,3 +637,14 @@ func (c *Config) ExtLinkName() string {
 func (c *Config) ExtLinkUrlPattern() string {
 	return c.GetString("ext_link_url_pattern", "")
 }
+
+// ---------------------------------------------------------------------------
+// Zipkin span ingestion
+// ---------------------------------------------------------------------------
+
+// ZipkinEnabled returns zipkin_enabled (default false).
+// When enabled, the server accepts Zipkin span data (via zipkin-scouter UDP storage)
+// and converts them to XLog entries for display in the Scouter client.
+func (c *Config) ZipkinEnabled() bool {
+	return c.GetBool("zipkin_enabled", false)
+}

@@ -92,7 +92,7 @@ func ReadPack(d *protocol.DataInputX) (Pack, error) {
 	}
 
 	if err := pack.Read(d); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("packType=%d: %w", typeCode, err)
 	}
 
 	return pack, nil

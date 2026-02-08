@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/zbum/scouter-server-go/internal/protocol"
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
@@ -171,6 +172,93 @@ func (w *XLogWR) process(entry *XLogEntry) {
 	if err := container.index.SetByGxid(entry.Gxid, dataPos); err != nil {
 		return
 	}
+}
+
+// ReadByTime reads XLog entries from the writer's in-memory containers.
+// This returns the most up-to-date data since the writer holds the authoritative
+// in-memory index. Returns false if the writer has no container for the date.
+func (w *XLogWR) ReadByTime(date string, stime, etime int64, handler func(data []byte)) (bool, error) {
+	w.mu.Lock()
+	container, exists := w.days[date]
+	w.mu.Unlock()
+	if !exists {
+		return false, nil
+	}
+
+	err := container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) {
+		offset := protocol.ToLong5(dataPos, 0)
+		data, err := container.data.Read(offset)
+		if err == nil && data != nil {
+			handler(data)
+		}
+	})
+	return true, err
+}
+
+// ReadFromEndTime reads XLog entries from the writer's in-memory containers
+// in reverse time order. Returns false if the writer has no container for the date.
+func (w *XLogWR) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte)) (bool, error) {
+	w.mu.Lock()
+	container, exists := w.days[date]
+	w.mu.Unlock()
+	if !exists {
+		return false, nil
+	}
+
+	err := container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) {
+		offset := protocol.ToLong5(dataPos, 0)
+		data, err := container.data.Read(offset)
+		if err == nil && data != nil {
+			handler(data)
+		}
+	})
+	return true, err
+}
+
+// GetByTxid retrieves a single XLog by transaction ID from the writer's containers.
+// Returns (nil, false, nil) if the writer has no container for the date.
+func (w *XLogWR) GetByTxid(date string, txid int64) ([]byte, bool, error) {
+	w.mu.Lock()
+	container, exists := w.days[date]
+	w.mu.Unlock()
+	if !exists {
+		return nil, false, nil
+	}
+
+	offset, err := container.index.GetByTxid(txid)
+	if err != nil {
+		return nil, true, err
+	}
+	if offset < 0 {
+		return nil, true, nil
+	}
+
+	data, err := container.data.Read(offset)
+	return data, true, err
+}
+
+// ReadByGxid reads XLog entries by global transaction ID from the writer's containers.
+// Returns false if the writer has no container for the date.
+func (w *XLogWR) ReadByGxid(date string, gxid int64, handler func(data []byte)) (bool, error) {
+	w.mu.Lock()
+	container, exists := w.days[date]
+	w.mu.Unlock()
+	if !exists {
+		return false, nil
+	}
+
+	offsets, err := container.index.GetByGxid(gxid)
+	if err != nil {
+		return true, err
+	}
+
+	for _, offset := range offsets {
+		data, err := container.data.Read(offset)
+		if err == nil && data != nil {
+			handler(data)
+		}
+	}
+	return true, nil
 }
 
 // PurgeOldDays closes day containers not in the keepDates set.

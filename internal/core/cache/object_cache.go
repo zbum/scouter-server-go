@@ -81,6 +81,19 @@ func (c *ObjectCache) MarkDead(timeout time.Duration) []*ObjectInfo {
 	return dead
 }
 
+// Touch updates the LastSeen timestamp for an existing object,
+// keeping it alive without requiring a full ObjectPack.
+// Returns true if the object was found and touched.
+func (c *ObjectCache) Touch(objHash int32) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if v, ok := c.store[objHash]; ok {
+		v.LastSeen = time.Now()
+		return true
+	}
+	return false
+}
+
 // Remove deletes an object from the cache by its hash.
 func (c *ObjectCache) Remove(objHash int32) {
 	c.mu.Lock()

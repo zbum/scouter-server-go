@@ -133,5 +133,8 @@ func ConfigMetaMap() map[string]ConfigMeta {
 		// External link
 		"ext_link_name":        {"External link display name", ValueTypeString},
 		"ext_link_url_pattern": {"External link URL pattern", ValueTypeString},
+
+		// Zipkin span ingestion
+		"zipkin_enabled": {"Enable Zipkin span ingestion (converts spans to XLog)", ValueTypeBool},
 	}
 }

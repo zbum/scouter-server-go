@@ -77,7 +77,7 @@ func TestTextCore_Handler_WrongPackType(t *testing.T) {
 
 func TestXLogCore_Handler(t *testing.T) {
 	xc := cache.NewXLogCache(100)
-	core := NewXLogCore(xc, nil, nil)
+	core := NewXLogCore(xc, nil, nil, nil)
 	handler := core.Handler()
 
 	xp := &pack.XLogPack{
@@ -102,7 +102,7 @@ func TestXLogCore_Handler(t *testing.T) {
 
 func TestXLogCore_Handler_SetsEndTime(t *testing.T) {
 	xc := cache.NewXLogCache(100)
-	core := NewXLogCore(xc, nil, nil)
+	core := NewXLogCore(xc, nil, nil, nil)
 	handler := core.Handler()
 
 	before := time.Now().UnixMilli()
@@ -116,7 +116,7 @@ func TestXLogCore_Handler_SetsEndTime(t *testing.T) {
 
 func TestXLogCore_Handler_ErrorFlag(t *testing.T) {
 	xc := cache.NewXLogCache(100)
-	core := NewXLogCore(xc, nil, nil)
+	core := NewXLogCore(xc, nil, nil, nil)
 	handler := core.Handler()
 
 	xp := &pack.XLogPack{ObjHash: 1, Error: 42, EndTime: 1000}
@@ -297,7 +297,7 @@ func TestDispatcherCoreIntegration(t *testing.T) {
 
 	// Create cores
 	textCore := NewTextCore(textCache, nil)
-	xlogCore := NewXLogCore(xlogCache, nil, nil)
+	xlogCore := NewXLogCore(xlogCache, nil, nil, nil)
 	perfCountCore := NewPerfCountCore(counterCache, nil)
 	agentManager := NewAgentManager(objectCache, 30*time.Second, nil, nil, nil, nil)
 	alertCore := NewAlertCore(nil, nil)
