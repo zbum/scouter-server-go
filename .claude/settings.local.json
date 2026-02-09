@@ -37,7 +37,8 @@
       "Bash(xattr:*)",
       "Bash(gh api:*)",
       "WebFetch(domain:api.github.com)",
-      "Bash(go vet:*)"
+      "Bash(go vet:*)",
+      "Bash(go get:*)"
     ]
   }
 }

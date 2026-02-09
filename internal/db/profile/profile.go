@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/zbum/scouter-server-go/internal/config"
+	"github.com/zbum/scouter-server-go/internal/db/compress"
 	"github.com/zbum/scouter-server-go/internal/db/io"
 	"github.com/zbum/scouter-server-go/internal/protocol"
 )
@@ -14,10 +16,11 @@ import (
 // Indexed by txid via IndexKeyFile. Each txid can have multiple profile blocks
 // (appended incrementally as steps complete).
 type ProfileData struct {
-	mu    sync.Mutex
-	dir   string
-	index *io.IndexKeyFile // txid → data offset(s)
-	data  *io.RealDataFile // profile block storage
+	mu           sync.Mutex
+	dir          string
+	index        *io.IndexKeyFile // txid → data offset(s)
+	data         *io.RealDataFile // profile block storage
+	compressPool *compress.Pool
 }
 
 func NewProfileData(dir string) (*ProfileData, error) {
@@ -36,10 +39,18 @@ func NewProfileData(dir string) (*ProfileData, error) {
 		return nil, err
 	}
 
+	pool, err := compress.NewPool()
+	if err != nil {
+		data.Close()
+		index.Close()
+		return nil, err
+	}
+
 	return &ProfileData{
-		dir:   dir,
-		index: index,
-		data:  data,
+		dir:          dir,
+		index:        index,
+		data:         data,
+		compressPool: pool,
 	}, nil
 }
 
@@ -49,10 +60,15 @@ func (p *ProfileData) Write(txid int64, block []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Write data: [int32:length][bytes:block]
+	body := block
+	if cfg := config.Get(); cfg != nil && cfg.CompressProfileEnabled() {
+		body = p.compressPool.Compress(block)
+	}
+
+	// Write data: [int32:length][bytes:body]
 	out := protocol.NewDataOutputX()
-	out.WriteInt32(int32(len(block)))
-	out.Write(block)
+	out.WriteInt32(int32(len(body)))
+	out.Write(body)
 
 	offset, err := p.data.Write(out.ToByteArray())
 	if err != nil {
@@ -107,12 +123,16 @@ func (p *ProfileData) Read(txid int64, maxBlocks int) ([][]byte, error) {
 		}
 		length := int(binary.BigEndian.Uint32(lenBuf))
 
-		// Read data
-		block := make([]byte, length)
-		if _, err := f.Read(block); err != nil {
+		// Read body
+		body := make([]byte, length)
+		if _, err := f.Read(body); err != nil {
 			continue
 		}
-		blocks = append(blocks, block)
+		decoded, err := p.compressPool.Decode(body)
+		if err != nil {
+			continue
+		}
+		blocks = append(blocks, decoded)
 	}
 
 	return blocks, nil
@@ -125,4 +145,7 @@ func (p *ProfileData) Flush() error {
 func (p *ProfileData) Close() {
 	p.data.Close()
 	p.index.Close()
+	if p.compressPool != nil {
+		p.compressPool.Close()
+	}
 }

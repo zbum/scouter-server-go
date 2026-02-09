@@ -5,13 +5,16 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/zbum/scouter-server-go/internal/config"
+	"github.com/zbum/scouter-server-go/internal/db/compress"
 	"github.com/zbum/scouter-server-go/internal/db/io"
 )
 
 // XLogData manages the data file for XLog entries.
 type XLogData struct {
-	dataFile *io.RealDataFile
-	path     string
+	dataFile     *io.RealDataFile
+	path         string
+	compressPool *compress.Pool
 }
 
 // NewXLogData opens the XLog data file.
@@ -22,17 +25,29 @@ func NewXLogData(dir string) (*XLogData, error) {
 		return nil, err
 	}
 
+	pool, err := compress.NewPool()
+	if err != nil {
+		dataFile.Close()
+		return nil, err
+	}
+
 	return &XLogData{
-		dataFile: dataFile,
-		path:     path,
+		dataFile:     dataFile,
+		path:         path,
+		compressPool: pool,
 	}, nil
 }
 
-// Write writes an XLog entry as [short:length][bytes:data] and returns the start offset.
+// Write writes an XLog entry as [short:length][bytes:body] and returns the start offset.
+// If compression is enabled, body = [0x00][0x01][zstd payload]; otherwise body = raw data.
 func (x *XLogData) Write(data []byte) (int64, error) {
-	buf := make([]byte, 2+len(data))
-	binary.BigEndian.PutUint16(buf[:2], uint16(len(data)))
-	copy(buf[2:], data)
+	body := data
+	if cfg := config.Get(); cfg != nil && cfg.CompressXLogEnabled() {
+		body = x.compressPool.Compress(data)
+	}
+	buf := make([]byte, 2+len(body))
+	binary.BigEndian.PutUint16(buf[:2], uint16(len(body)))
+	copy(buf[2:], body)
 	return x.dataFile.Write(buf)
 }
 
@@ -57,13 +72,13 @@ func (x *XLogData) Read(offset int64) ([]byte, error) {
 	}
 	length := binary.BigEndian.Uint16(lenBuf[:])
 
-	// Read data
-	data := make([]byte, length)
-	if _, err := f.Read(data); err != nil {
+	// Read body
+	body := make([]byte, length)
+	if _, err := f.Read(body); err != nil {
 		return nil, err
 	}
 
-	return data, nil
+	return x.compressPool.Decode(body)
 }
 
 // Flush flushes buffered data to disk.
@@ -71,9 +86,12 @@ func (x *XLogData) Flush() error {
 	return x.dataFile.Flush()
 }
 
-// Close closes the data file.
+// Close closes the data file and compression pool.
 func (x *XLogData) Close() {
 	if x.dataFile != nil {
 		x.dataFile.Close()
+	}
+	if x.compressPool != nil {
+		x.compressPool.Close()
 	}
 }
