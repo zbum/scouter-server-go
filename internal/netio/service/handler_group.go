@@ -1,6 +1,10 @@
 package service
 
 import (
+	"fmt"
+	"log/slog"
+	"strings"
+
 	"github.com/zbum/scouter-server-go/internal/core"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/protocol"
@@ -62,6 +66,16 @@ func RegisterGroupHandlers(r *Registry, xlogGroupPerf *core.XLogGroupPerf, textC
 		resp.Put("count", countLv)
 		resp.Put("elapsed", elapsedLv)
 		resp.Put("error", errorLv)
+
+		// Diagnostic: log what we're sending to the client
+		var parts []string
+		for i := 0; i < len(nameLv.Value); i++ {
+			tv := nameLv.Value[i].(*value.TextValue)
+			dv := countLv.Value[i].(*value.DecimalValue)
+			fv := elapsedLv.Value[i].(*value.FloatValue)
+			parts = append(parts, fmt.Sprintf("%s(count=%d,elapsed=%.1f)", tv.Value, dv.Value, fv.Value))
+		}
+		slog.Info("REALTIME_SERVICE_GROUP response", "groups", strings.Join(parts, ", "), "objCount", len(objHashes))
 
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)
 		pack.WritePack(dout, resp)

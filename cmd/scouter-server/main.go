@@ -135,7 +135,7 @@ func main() {
 
 	// --- Core processors ---
 	textCore := core.NewTextCore(textCache, textWR)
-	xlogGroupPerf := core.NewXLogGroupPerf(textCache)
+	xlogGroupPerf := core.NewXLogGroupPerf(textCache, textRD)
 	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR, xlogGroupPerf)
 	perfCountCore := core.NewPerfCountCore(counterCache, counterWR)
 	profileCore := core.NewProfileCore(profileWR)

@@ -16,11 +16,10 @@ import (
 // Indexed by txid via IndexKeyFile. Each txid can have multiple profile blocks
 // (appended incrementally as steps complete).
 type ProfileData struct {
-	mu           sync.Mutex
-	dir          string
-	index        *io.IndexKeyFile // txid → data offset(s)
-	data         *io.RealDataFile // profile block storage
-	compressPool *compress.Pool
+	mu    sync.Mutex
+	dir   string
+	index *io.IndexKeyFile // txid → data offset(s)
+	data  *io.RealDataFile // profile block storage
 }
 
 func NewProfileData(dir string) (*ProfileData, error) {
@@ -39,18 +38,10 @@ func NewProfileData(dir string) (*ProfileData, error) {
 		return nil, err
 	}
 
-	pool, err := compress.NewPool()
-	if err != nil {
-		data.Close()
-		index.Close()
-		return nil, err
-	}
-
 	return &ProfileData{
-		dir:          dir,
-		index:        index,
-		data:         data,
-		compressPool: pool,
+		dir:   dir,
+		index: index,
+		data:  data,
 	}, nil
 }
 
@@ -62,7 +53,7 @@ func (p *ProfileData) Write(txid int64, block []byte) error {
 
 	body := block
 	if cfg := config.Get(); cfg != nil && cfg.CompressProfileEnabled() {
-		body = p.compressPool.Compress(block)
+		body = compress.SharedPool().Compress(block)
 	}
 
 	// Write data: [int32:length][bytes:body]
@@ -128,7 +119,7 @@ func (p *ProfileData) Read(txid int64, maxBlocks int) ([][]byte, error) {
 		if _, err := f.Read(body); err != nil {
 			continue
 		}
-		decoded, err := p.compressPool.Decode(body)
+		decoded, err := compress.SharedPool().Decode(body)
 		if err != nil {
 			continue
 		}
@@ -145,7 +136,4 @@ func (p *ProfileData) Flush() error {
 func (p *ProfileData) Close() {
 	p.data.Close()
 	p.index.Close()
-	if p.compressPool != nil {
-		p.compressPool.Close()
-	}
 }

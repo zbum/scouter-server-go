@@ -12,9 +12,8 @@ import (
 
 // XLogData manages the data file for XLog entries.
 type XLogData struct {
-	dataFile     *io.RealDataFile
-	path         string
-	compressPool *compress.Pool
+	dataFile *io.RealDataFile
+	path     string
 }
 
 // NewXLogData opens the XLog data file.
@@ -25,16 +24,9 @@ func NewXLogData(dir string) (*XLogData, error) {
 		return nil, err
 	}
 
-	pool, err := compress.NewPool()
-	if err != nil {
-		dataFile.Close()
-		return nil, err
-	}
-
 	return &XLogData{
-		dataFile:     dataFile,
-		path:         path,
-		compressPool: pool,
+		dataFile: dataFile,
+		path:     path,
 	}, nil
 }
 
@@ -43,7 +35,7 @@ func NewXLogData(dir string) (*XLogData, error) {
 func (x *XLogData) Write(data []byte) (int64, error) {
 	body := data
 	if cfg := config.Get(); cfg != nil && cfg.CompressXLogEnabled() {
-		body = x.compressPool.Compress(data)
+		body = compress.SharedPool().Compress(data)
 	}
 	buf := make([]byte, 2+len(body))
 	binary.BigEndian.PutUint16(buf[:2], uint16(len(body)))
@@ -78,7 +70,7 @@ func (x *XLogData) Read(offset int64) ([]byte, error) {
 		return nil, err
 	}
 
-	return x.compressPool.Decode(body)
+	return compress.SharedPool().Decode(body)
 }
 
 // Flush flushes buffered data to disk.
@@ -86,12 +78,9 @@ func (x *XLogData) Flush() error {
 	return x.dataFile.Flush()
 }
 
-// Close closes the data file and compression pool.
+// Close closes the data file.
 func (x *XLogData) Close() {
 	if x.dataFile != nil {
 		x.dataFile.Close()
-	}
-	if x.compressPool != nil {
-		x.compressPool.Close()
 	}
 }

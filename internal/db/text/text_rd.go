@@ -1,7 +1,9 @@
 package text
 
 import (
+	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 )
 
@@ -98,6 +100,50 @@ func (r *TextRD) PurgeOldDays(keepDates map[string]bool) {
 			delete(r.cache, key)
 		}
 	}
+}
+
+// SearchAllDates searches all available date directories for a text entry.
+// Returns the text if found in any date directory, searching most recent dates first.
+func (r *TextRD) SearchAllDates(div string, hash int32) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// List all date directories under baseDir
+	entries, err := os.ReadDir(r.baseDir)
+	if err != nil {
+		return "", nil // no data directory yet
+	}
+
+	// Collect date directory names and sort descending (most recent first)
+	var dates []string
+	for _, e := range entries {
+		if e.IsDir() && len(e.Name()) == 8 {
+			dates = append(dates, e.Name())
+		}
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(dates)))
+
+	for _, date := range dates {
+		// Check cache first
+		key := cacheKey{Date: date, Div: div, Hash: hash}
+		if text, ok := r.cache[key]; ok {
+			return text, nil
+		}
+
+		table, err := r.getTable(date)
+		if err != nil {
+			continue
+		}
+		text, found, err := table.Get(div, hash)
+		if err != nil {
+			continue
+		}
+		if found && text != "" {
+			r.cache[key] = text
+			return text, nil
+		}
+	}
+	return "", nil
 }
 
 // Close closes all open tables and clears the cache.

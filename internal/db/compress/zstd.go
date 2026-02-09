@@ -1,6 +1,8 @@
 package compress
 
 import (
+	"sync"
+
 	"github.com/klauspost/compress/zstd"
 )
 
@@ -71,6 +73,7 @@ func (p *Pool) Decode(body []byte) ([]byte, error) {
 }
 
 // Close releases encoder and decoder resources.
+// NOTE: Do not call Close on the shared singleton pool.
 func (p *Pool) Close() {
 	if p.encoder != nil {
 		p.encoder.Close()
@@ -78,4 +81,22 @@ func (p *Pool) Close() {
 	if p.decoder != nil {
 		p.decoder.Close()
 	}
+}
+
+var (
+	sharedPool *Pool
+	sharedOnce sync.Once
+)
+
+// SharedPool returns a process-wide singleton Pool.
+// EncodeAll/DecodeAll are goroutine-safe, so a single Pool is sufficient.
+func SharedPool() *Pool {
+	sharedOnce.Do(func() {
+		p, err := NewPool()
+		if err != nil {
+			panic("compress: failed to initialize shared pool: " + err.Error())
+		}
+		sharedPool = p
+	})
+	return sharedPool
 }
