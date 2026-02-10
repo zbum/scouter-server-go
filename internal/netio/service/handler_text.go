@@ -12,6 +12,25 @@ import (
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
+// resolveText looks up text by hash: memory cache → same-date disk → all-dates disk.
+func resolveText(textCache *cache.TextCache, textRD *text.TextRD, date, typeName string, h int32) (string, bool) {
+	if txt, found := textCache.Get(typeName, h); found {
+		return txt, true
+	}
+	if textRD == nil {
+		return "", false
+	}
+	if diskTxt, err := textRD.GetString(date, typeName, h); err == nil && diskTxt != "" {
+		textCache.Put(typeName, h, diskTxt)
+		return diskTxt, true
+	}
+	if diskTxt, err := textRD.SearchAllDates(typeName, h); err == nil && diskTxt != "" {
+		textCache.Put(typeName, h, diskTxt)
+		return diskTxt, true
+	}
+	return "", false
+}
+
 // RegisterTextHandlers registers GET_TEXT_100 and related handlers.
 func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.TextRD) {
 	// GET_TEXT_100: resolve text hashes to strings in batches of 100
@@ -45,19 +64,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			// Try in-memory cache first
-			txt, found := textCache.Get(typeName, h)
-
-			// Fall back to disk storage
-			if !found && textRD != nil {
-				diskTxt, err := textRD.GetString(date, typeName, h)
-				if err == nil && diskTxt != "" {
-					txt = diskTxt
-					found = true
-					textCache.Put(typeName, h, txt)
-				}
-			}
-
+			txt, found := resolveText(textCache, textRD, date, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)
@@ -105,16 +112,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := textCache.Get(typeName, h)
-			if !found && textRD != nil {
-				diskTxt, err := textRD.GetString(date, typeName, h)
-				if err == nil && diskTxt != "" {
-					txt = diskTxt
-					found = true
-					textCache.Put(typeName, h, txt)
-				}
-			}
-
+			txt, found := resolveText(textCache, textRD, date, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -165,16 +163,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			typeName := tv.Value
 
-			txt, found := textCache.Get(typeName, h)
-			if !found && textRD != nil {
-				diskTxt, err := textRD.GetString(date, typeName, h)
-				if err == nil && diskTxt != "" {
-					txt = diskTxt
-					found = true
-					textCache.Put(typeName, h, txt)
-				}
-			}
-
+			txt, found := resolveText(textCache, textRD, date, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -216,16 +205,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := textCache.Get(typeName, h)
-			if !found && textRD != nil {
-				diskTxt, err := textRD.GetString(date, typeName, h)
-				if err == nil && diskTxt != "" {
-					txt = diskTxt
-					found = true
-					textCache.Put(typeName, h, txt)
-				}
-			}
-
+			txt, found := resolveText(textCache, textRD, date, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)
