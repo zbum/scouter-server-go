@@ -19,6 +19,7 @@ type XLogCore struct {
 	profileWR     *profile.ProfileWR
 	xlogGroupPerf *XLogGroupPerf
 	queue         chan *pack.XLogPack
+
 }
 
 func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR, xlogGroupPerf *XLogGroupPerf) *XLogCore {

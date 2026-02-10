@@ -499,9 +499,9 @@ func (c *Config) CompressXLogEnabled() bool {
 	return c.GetBool("compress_xlog_enabled", false)
 }
 
-// CompressProfileEnabled returns compress_profile_enabled (default false).
+// CompressProfileEnabled returns compress_profile_enabled (default true).
 func (c *Config) CompressProfileEnabled() bool {
-	return c.GetBool("compress_profile_enabled", false)
+	return c.GetBool("compress_profile_enabled", true)
 }
 
 // ---------------------------------------------------------------------------

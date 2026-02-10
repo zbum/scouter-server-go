@@ -225,6 +225,10 @@ func main() {
 	service.RegisterAgentProxyHandlers(registry, tcpServer, objectCache, deadTimeout)
 	service.RegisterConfigureExtHandlers(registry, tcpServer)
 
+	// --- Text cache reset (sends OBJECT_RESET_CACHE to agents on date change) ---
+	textCacheReset := core.NewTextCacheReset(objectCache, deadTimeout, tcpServer)
+	textCacheReset.Start(ctx)
+
 	// --- Day container purger ---
 	purger := db.NewDayContainerPurger(cfg.DayContainerKeepHours(),
 		xlogWR, xlogRD,
