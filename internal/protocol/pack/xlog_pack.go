@@ -4,6 +4,12 @@ import (
 	"github.com/zbum/scouter-server-go/internal/protocol"
 )
 
+// XLogType constants matching Java's XLogTypes.
+const (
+	XLogTypeWebService byte = 0
+	XLogTypeAppService byte = 1
+)
+
 // XLogPack represents transaction log data (most complex pack type with 40+ fields).
 type XLogPack struct {
 	EndTime                           int64

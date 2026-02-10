@@ -10,7 +10,6 @@ import (
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/text"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
-	"github.com/zbum/scouter-server-go/internal/util"
 )
 
 const (
@@ -114,9 +113,6 @@ type XLogGroupPerf struct {
 	cachedObjFilter map[int32]bool
 	cacheTime       int64 // unix millis
 
-	// Fallback group hash for XLogs whose group could not be derived
-	fallbackGroup int32
-
 	// Diagnostic counters
 	totalCount    atomic.Int64
 	fallbackCount atomic.Int64
@@ -129,7 +125,6 @@ func NewXLogGroupPerf(textCache *cache.TextCache, textRD *text.TextRD) *XLogGrou
 		meters:        make(map[groupKey]*meterService),
 		textCache:     textCache,
 		groupUtil:     NewXLogGroupUtil(textCache, textRD),
-		fallbackGroup: util.HashString("/**"),
 	}
 }
 
@@ -143,24 +138,25 @@ func (x *XLogGroupPerf) Process(xp *pack.XLogPack) {
 
 // Add records an XLogPack's metrics for service group aggregation.
 // Called from XLogCore.run() for each incoming XLogPack.
+// Matching Scala's XLogGroupPerf.process(): if group == 0, the XLog is dropped.
 func (x *XLogGroupPerf) Add(xp *pack.XLogPack) {
 	x.totalCount.Add(1)
 
 	group := xp.Group
 	if group == 0 {
-		// Fallback to "/**" group instead of dropping
-		group = x.fallbackGroup
+		// Drop XLogs with no group, matching Scala behavior.
 		x.fallbackCount.Add(1)
 		now := time.Now().Unix()
 		if now-x.lastLogTime.Load() >= 10 {
 			x.lastLogTime.Store(now)
 			total := x.totalCount.Load()
 			fallback := x.fallbackCount.Load()
-			slog.Warn("XLogGroupPerf: XLogs assigned to fallback group",
-				"fallback", fallback, "total", total,
-				"fallbackRate", fmt.Sprintf("%.1f%%", float64(fallback)/float64(total)*100),
+			slog.Debug("XLogGroupPerf: XLogs dropped (group=0)",
+				"dropped", fallback, "total", total,
+				"dropRate", fmt.Sprintf("%.1f%%", float64(fallback)/float64(total)*100),
 				"serviceHash", xp.Service, "objHash", xp.ObjHash)
 		}
+		return
 	}
 
 	x.mu.Lock()

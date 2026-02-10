@@ -39,7 +39,14 @@
       "WebFetch(domain:api.github.com)",
       "Bash(go vet:*)",
       "Bash(go get:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(tmux -V:*)",
+      "Bash(tmux list-sessions:*)",
+      "Bash(tmux new-window:*)",
+      "Bash(tmux send-keys:*)",
+      "Bash(tmux split-window:*)",
+      "Bash(tmux list-windows:*)",
+      "Bash(tmux rename-window:*)"
     ]
   }
 }

@@ -52,8 +52,12 @@ func (xc *XLogCore) Handler() PackHandler {
 
 func (xc *XLogCore) run() {
 	for xp := range xc.queue {
+		// Only WEB_SERVICE(0) and APP_SERVICE(1) participate in service group
+		// throughput aggregation, matching Scala's XLogCore.calc() filter.
+		isService := xp.XType == pack.XLogTypeWebService || xp.XType == pack.XLogTypeAppService
+
 		// Derive group hash from service URL if not already set (before serialization)
-		if xc.xlogGroupPerf != nil {
+		if isService && xc.xlogGroupPerf != nil {
 			xc.xlogGroupPerf.Process(xp)
 		}
 
@@ -64,7 +68,7 @@ func (xc *XLogCore) run() {
 		xc.xlogCache.Put(xp.ObjHash, xp.Elapsed, xp.Error != 0, b)
 
 		// Aggregate by service group for real-time throughput display
-		if xc.xlogGroupPerf != nil {
+		if isService && xc.xlogGroupPerf != nil {
 			xc.xlogGroupPerf.Add(xp)
 		}
 
