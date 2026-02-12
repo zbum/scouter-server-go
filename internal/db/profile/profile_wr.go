@@ -25,11 +25,14 @@ type ProfileWR struct {
 	queue   chan *ProfileEntry
 }
 
-func NewProfileWR(baseDir string) *ProfileWR {
+func NewProfileWR(baseDir string, queueSize int) *ProfileWR {
+	if queueSize <= 0 {
+		queueSize = 1000
+	}
 	return &ProfileWR{
 		baseDir: baseDir,
 		days:    make(map[string]*ProfileData),
-		queue:   make(chan *ProfileEntry, 10000),
+		queue:   make(chan *ProfileEntry, queueSize),
 	}
 }
 

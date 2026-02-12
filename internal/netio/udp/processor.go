@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/core"
 	"github.com/zbum/scouter-server-go/internal/protocol"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
@@ -66,6 +67,11 @@ func (p *NetDataProcessor) process(nd netData) {
 		return
 	}
 
+	// log_udp_packet: log all incoming UDP packets
+	if cfg := config.Get(); cfg != nil && cfg.LogUDPPacket() {
+		slog.Info("UDP packet received", "magic", cafe, "len", len(nd.data), "addr", nd.addr)
+	}
+
 	switch cafe {
 	case protocol.UDP_CAFE, protocol.UDP_JAVA:
 		p.processCafe(d, nd.addr)
@@ -123,6 +129,11 @@ func (p *NetDataProcessor) processCafeMTU(d *protocol.DataInputX, addr *net.UDPA
 	data, err := d.ReadBlob()
 	if err != nil {
 		return
+	}
+
+	// log_udp_multipacket: log MTU fragment reception
+	if cfg := config.Get(); cfg != nil && cfg.LogUDPMultipacket() {
+		slog.Info("UDP multipacket fragment", "pkid", pkid, "num", num, "total", total, "objHash", objHash, "addr", addr)
 	}
 
 	done := p.multiPacket.Add(pkid, total, num, data, objHash)

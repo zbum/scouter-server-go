@@ -113,7 +113,7 @@ func TestProfileData_NonExistent(t *testing.T) {
 func TestProfileWR_Async(t *testing.T) {
 	baseDir := t.TempDir()
 
-	wr := NewProfileWR(baseDir)
+	wr := NewProfileWR(baseDir, 1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	wr.Start(ctx)
 

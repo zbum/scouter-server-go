@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
 )
 
@@ -31,10 +32,67 @@ func (d *Dispatcher) Dispatch(p pack.Pack, addr *net.UDPAddr) {
 	if p == nil {
 		return
 	}
-	h, ok := d.handlers[p.GetPackType()]
+
+	packType := p.GetPackType()
+
+	// Per-type debug logging controlled by config flags
+	if cfg := config.Get(); cfg != nil {
+		logUDPPack(cfg, packType, addr)
+	}
+
+	h, ok := d.handlers[packType]
 	if ok {
 		h(p, addr)
 	} else {
-		slog.Debug("no handler for pack type", "type", p.GetPackType())
+		slog.Debug("no handler for pack type", "type", packType)
+	}
+}
+
+// logUDPPack logs pack reception when the corresponding config flag is enabled.
+func logUDPPack(cfg *config.Config, packType byte, addr *net.UDPAddr) {
+	var enabled bool
+	var typeName string
+
+	switch packType {
+	case pack.PackTypeXLog, pack.PackTypeDroppedXLog:
+		enabled = cfg.LogUDPXLog()
+		typeName = "xlog"
+	case pack.PackTypeXLogProfile, pack.PackTypeXLogProfile2:
+		enabled = cfg.LogUDPProfile()
+		typeName = "profile"
+	case pack.PackTypeText:
+		enabled = cfg.LogUDPText()
+		typeName = "text"
+	case pack.PackTypePerfCounter:
+		enabled = cfg.LogUDPCounter()
+		typeName = "counter"
+	case pack.PackTypeObject:
+		enabled = cfg.LogUDPObject()
+		typeName = "object"
+	case pack.PackTypeAlert:
+		enabled = cfg.LogUDPAlert()
+		typeName = "alert"
+	case pack.PackTypeSummary:
+		enabled = cfg.LogUDPSummary()
+		typeName = "summary"
+	case pack.PackTypeBatch:
+		enabled = cfg.LogUDPBatch()
+		typeName = "batch"
+	case pack.PackTypeSpan, pack.PackTypeSpanContainer:
+		enabled = cfg.LogUDPSpan()
+		typeName = "span"
+	case pack.PackTypeStack:
+		enabled = cfg.LogUDPStack()
+		typeName = "stack"
+	case pack.PackTypePerfStatus:
+		enabled = cfg.LogUDPStatus()
+		typeName = "status"
+	case pack.PackTypePerfInteractionCounter:
+		enabled = cfg.LogUDPInteractionCounter()
+		typeName = "interaction_counter"
+	}
+
+	if enabled {
+		slog.Info("UDP pack received", "type", typeName, "packType", packType, "addr", addr)
 	}
 }

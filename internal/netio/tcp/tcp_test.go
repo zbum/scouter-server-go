@@ -34,7 +34,7 @@ func startTestServer(t *testing.T) (net.Addr, context.CancelFunc, *cache.ObjectC
 	service.RegisterObjectHandlers(registry, objectCache, 30*time.Second, counterCache, counter.NewObjectTypeManager())
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, 30*time.Second, nil)
 	service.RegisterXLogHandlers(registry, xlogCache, nil)
-	service.RegisterTextHandlers(registry, textCache, nil)
+	service.RegisterTextHandlers(registry, textCache, nil, nil)
 
 	// Use OS-assigned port: bind a listener first, get the port, close it, then start server on that port
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

@@ -1,0 +1,15 @@
+time=2026-02-12T18:02:44.708+09:00 level=INFO msg="Scouter Server (Go) starting" version=826ed56-dirty build=2026-02-12_09:02:07
+time=2026-02-12T18:02:44.711+09:00 level=INFO msg="Data directory" path=./database
+time=2026-02-12T18:02:44.713+09:00 level=INFO msg="ObjectTypeManager loaded families" count=7
+time=2026-02-12T18:02:44.713+09:00 level=INFO msg="ObjectTypeManager loaded known types" count=17
+time=2026-02-12T18:02:44.714+09:00 level=INFO msg="AgentManager monitorLoop started" deadTimeout=8s
+time=2026-02-12T18:02:44.714+09:00 level=INFO msg="AccountManager: loaded accounts" count=2
+time=2026-02-12T18:02:44.715+09:00 level=INFO msg="AccountManager: loaded groups" count=2
+time=2026-02-12T18:02:44.715+09:00 level=INFO msg="Day container purger started" keepHours=48
+time=2026-02-12T18:02:44.715+09:00 level=INFO msg="Auto-delete scheduler started" keepDays=30
+time=2026-02-12T18:02:44.715+09:00 level=INFO msg="Data purge scheduler started" profileKeepDays=10 xlogKeepDays=30 sumKeepDays=60 counterKeepDays=70
+time=2026-02-12T18:02:44.716+09:00 level=INFO msg="PID file created" file=54621.scouter
+time=2026-02-12T18:02:44.716+09:00 level=INFO msg="TCP server starting" port=6100
+time=2026-02-12T18:02:44.716+09:00 level=INFO msg="UDP server starting" port=6100
+time=2026-02-12T18:02:44.716+09:00 level=INFO msg="UDP server started" addr=0.0.0.0:6100
+time=2026-02-12T18:02:44.716+09:00 level=INFO msg="TCP server started" addr=0.0.0.0:6100

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/login"
 	"github.com/zbum/scouter-server-go/internal/netio/service"
 	"github.com/zbum/scouter-server-go/internal/protocol"
@@ -202,6 +203,11 @@ func (s *Server) handleClient(ctx context.Context, reader io.Reader, writer *buf
 				slog.Debug("TCP invalid session", "addr", remoteAddr, "cmd", cmd)
 				return
 			}
+		}
+
+		// log_tcp_action_enabled: log TCP command dispatch
+		if cfg := config.Get(); cfg != nil && cfg.LogTcpActionEnabled() {
+			slog.Info("TCP action", "cmd", cmd, "addr", remoteAddr)
 		}
 
 		// Dispatch to handler

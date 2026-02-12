@@ -49,7 +49,9 @@
       "Bash(tmux rename-window:*)",
       "Bash(direnv version:*)",
       "Bash(direnv allow:*)",
-      "Bash(make test:*)"
+      "Bash(make test:*)",
+      "Bash(./dist/scouter-server:*)",
+      "Bash(gtimeout:*)"
     ]
   }
 }

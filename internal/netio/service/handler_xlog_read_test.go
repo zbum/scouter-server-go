@@ -231,7 +231,7 @@ func TestTranxProfile(t *testing.T) {
 	baseDir := t.TempDir()
 
 	// Write profile using the writer
-	profileWR := profile.NewProfileWR(baseDir)
+	profileWR := profile.NewProfileWR(baseDir, 1000)
 	ctx, cancel := context.WithCancel(context.Background())
 	profileWR.Start(ctx)
 
@@ -255,7 +255,7 @@ func TestTranxProfile(t *testing.T) {
 	profileWR.Close()
 
 	// Re-open profileWR so it shares the same MemHashBlock state
-	profileWR2 := profile.NewProfileWR(baseDir)
+	profileWR2 := profile.NewProfileWR(baseDir, 1000)
 
 	xlogRD := xlog.NewXLogRD(baseDir)
 	defer xlogRD.Close()
@@ -314,7 +314,7 @@ func TestTranxProfileNotFound(t *testing.T) {
 
 	xlogRD := xlog.NewXLogRD(baseDir)
 	defer xlogRD.Close()
-	profileWR := profile.NewProfileWR(baseDir)
+	profileWR := profile.NewProfileWR(baseDir, 1000)
 	defer profileWR.Close()
 
 	registry := NewRegistry()

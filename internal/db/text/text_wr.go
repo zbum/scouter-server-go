@@ -121,6 +121,28 @@ func (w *TextWR) getTable() (*TextTable, error) {
 	return table, nil
 }
 
+// GetString reads a text from the writer's TextTable (which has the up-to-date index).
+// This is needed because TextRD has a stale MemHashBlock that can't see data
+// written after it was opened.
+func (w *TextWR) GetString(div string, hash int32) (string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	table, err := w.getTable()
+	if err != nil {
+		return "", err
+	}
+
+	text, found, err := table.Get(div, hash)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+	return text, nil
+}
+
 // Flush waits for all pending writes to complete.
 func (w *TextWR) Flush() {
 	w.wg.Wait()

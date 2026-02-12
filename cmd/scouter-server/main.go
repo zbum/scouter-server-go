@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
 	"github.com/zbum/scouter-server-go/internal/config"
 	scoutercounter "github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core"
+	"github.com/zbum/scouter-server-go/internal/logging"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db"
 	"github.com/zbum/scouter-server-go/internal/db/alert"
@@ -40,6 +42,9 @@ func main() {
 		return
 	}
 
+	// --- Startup banner ---
+	printBanner()
+
 	// --- Configuration ---
 	confFile := "./conf/scouter.conf"
 	if f := os.Getenv("SCOUTER_CONF"); f != "" {
@@ -51,12 +56,13 @@ func main() {
 		cfg, _ = config.Load("") // load empty defaults
 	}
 
-	// Configure logging
+	// Configure logging with file rotation (matching Java's Logger behavior)
 	logLevel := slog.LevelInfo
 	if cfg.IsDebug() {
 		logLevel = slog.LevelDebug
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
+	logWriter := logging.SetupWriter(cfg.LogDir(), cfg.LogRotationEnabled(), cfg.LogKeepDays())
+	slog.SetDefault(slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: logLevel})))
 
 	slog.Info("Scouter Server (Go) starting", "version", Version, "build", BuildTime)
 
@@ -77,6 +83,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// --- Start log rotation & cleanup goroutines ---
+	if rw, ok := logWriter.(*logging.RotatingWriter); ok {
+		rw.Start(ctx)
+		defer rw.Close()
+	}
+
 	// --- Config file watcher (polls every 5 seconds) ---
 	config.StartWatcher(ctx, confFile, 5*time.Second)
 
@@ -90,7 +102,7 @@ func main() {
 	counterWR := counter.NewCounterWR(dataDir)
 	counterWR.Start(ctx)
 
-	profileWR := profile.NewProfileWR(dataDir)
+	profileWR := profile.NewProfileWR(dataDir, cfg.ProfileQueueSize())
 	profileWR.Start(ctx)
 
 	alertWR := alert.NewAlertWR(dataDir)
@@ -182,7 +194,7 @@ func main() {
 	service.RegisterObjectHandlers(registry, objectCache, deadTimeout, counterCache, typeManager)
 	service.RegisterCounterHandlers(registry, counterCache, objectCache, deadTimeout, counterRD)
 	service.RegisterXLogHandlers(registry, xlogCache, xlogRD)
-	service.RegisterTextHandlers(registry, textCache, textRD)
+	service.RegisterTextHandlers(registry, textCache, textRD, textWR)
 	service.RegisterXLogReadHandlers(registry, xlogRD, profileRD, profileWR, xlogWR)
 	service.RegisterCounterReadHandlers(registry, counterRD, objectCache, deadTimeout)
 	service.RegisterAlertHandlers(registry, alertRD, alertCache)
@@ -245,6 +257,23 @@ func main() {
 		cleaner := db.NewAutoDeleteScheduler(dataDir, keepDays)
 		cleaner.Start(ctx)
 		slog.Info("Auto-delete scheduler started", "keepDays", keepDays)
+	}
+
+	// --- Per-type data purge scheduler (matching Java's AutoDeleteScheduler) ---
+	if cfg.MgrPurgeEnabled() {
+		dataPurger := db.NewDataPurgeScheduler(dataDir,
+			cfg.MgrPurgeProfileKeepDays(),
+			cfg.MgrPurgeXLogKeepDays(),
+			cfg.MgrPurgeSumDataDays(),
+			cfg.MgrPurgeCounterKeepDays(),
+		)
+		dataPurger.Start(ctx)
+		slog.Info("Data purge scheduler started",
+			"profileKeepDays", cfg.MgrPurgeProfileKeepDays(),
+			"xlogKeepDays", cfg.MgrPurgeXLogKeepDays(),
+			"sumKeepDays", cfg.MgrPurgeSumDataDays(),
+			"counterKeepDays", cfg.MgrPurgeCounterKeepDays(),
+		)
 	}
 
 	// --- HTTP API server (optional) ---
@@ -320,4 +349,17 @@ func main() {
 	}
 
 	slog.Info("Scouter Server stopped")
+}
+
+func printBanner() {
+	fmt.Printf(`  ____                  _
+ / ___|  ___ ___  _   _| |_ ___ _ __
+ \___ \ / __/   \| | | | __/ _ \ '__|
+  ___) | (_| (+) | |_| | ||  __/ |
+ |____/ \___\___/ \__,_|\__\___|_|
+ Scouter Server (Go) version %s %s
+ Open Source S/W Performance Monitoring
+ Runtime: %s %s/%s
+
+`, Version, BuildTime, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 }

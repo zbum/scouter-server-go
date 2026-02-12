@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/xlog"
 	"github.com/zbum/scouter-server-go/internal/protocol"
@@ -23,6 +24,13 @@ func RegisterXLogHandlers(r *Registry, xlogCache *cache.XLogCache, xlogRD *xlog.
 		lastIndex := int(param.GetInt("index"))
 		lastLoop := param.GetLong("loop")
 		limit := param.GetInt("limit") // min elapsed ms (not count)
+
+		// Apply server-side lower bound (matching Java's Math.max)
+		if cfg := config.Get(); cfg != nil {
+			if bound := int32(cfg.XLogRealtimeLowerBoundMs()); bound > limit {
+				limit = bound
+			}
+		}
 
 		// Build objHash filter set
 		var objHashSet map[int32]bool

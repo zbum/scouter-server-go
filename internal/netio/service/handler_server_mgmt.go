@@ -15,29 +15,20 @@ import (
 	"github.com/zbum/scouter-server-go/internal/protocol/value"
 )
 
-var serverStartTime = time.Now()
-
 // RegisterServerMgmtHandlers registers server management and monitoring handlers.
 func RegisterServerMgmtHandlers(r *Registry, version string, dataDir string) {
 
 	// SERVER_STATUS: Return current server status info.
+	// The client reads "used" and "total" to display server memory in the Objects Perf column.
+	// Client sends null param (no pack written), so we must NOT read a param pack here.
 	r.Register(protocol.SERVER_STATUS, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
-		// Read param pack
-		pack.ReadPack(din)
-
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
 
-		uptime := time.Since(serverStartTime).Milliseconds()
-
 		resp := &pack.MapPack{}
-		resp.PutLong("pid", int64(os.Getpid()))
-		resp.PutLong("uptime", uptime)
-		resp.PutLong("goroutines", int64(runtime.NumGoroutine()))
-		resp.PutLong("memAlloc", int64(m.Alloc))
-		resp.PutLong("memSys", int64(m.Sys))
-		resp.PutLong("numGC", int64(m.NumGC))
-		resp.PutStr("version", version)
+		resp.PutLong("used", int64(m.Alloc))
+		resp.PutLong("total", int64(m.Sys))
+		resp.PutLong("time", time.Now().UnixMilli())
 
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)
 		pack.WritePack(dout, resp)

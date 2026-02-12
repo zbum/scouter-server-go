@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/protocol"
 	"github.com/zbum/scouter-server-go/internal/util"
 )
@@ -83,7 +84,11 @@ func (f *IndexKeyFile) Get(key []byte) ([]byte, error) {
 		realKeyPos = r.PrevPos
 		looping++
 	}
-	if looping > 100 {
+	warnCount := 100
+	if cfg := config.Get(); cfg != nil {
+		warnCount = cfg.LogIndexTraversalWarningCount()
+	}
+	if looping > warnCount {
 		slog.Warn("Too many index deep searching", "looping", looping)
 	}
 	return nil, nil

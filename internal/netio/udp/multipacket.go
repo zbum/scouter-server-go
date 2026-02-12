@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/zbum/scouter-server-go/internal/config"
 )
 
 // multiPacket holds fragments of a split UDP packet awaiting reassembly.
@@ -96,7 +98,10 @@ func (p *MultiPacketProcessor) cleanupLoop() {
 		now := time.Now()
 		for k, mp := range p.packets {
 			if now.Sub(mp.created) > p.expiry {
-				slog.Debug("MultiPacket expired", "pkid", k, "received", mp.received, "total", mp.total)
+				// log_expired_multipacket: log expired multipacket fragments (default: true)
+				if cfg := config.Get(); cfg == nil || cfg.LogExpiredMultipacket() {
+					slog.Info("MultiPacket expired", "pkid", k, "received", mp.received, "total", mp.total, "objHash", mp.objHash)
+				}
 				delete(p.packets, k)
 			}
 		}

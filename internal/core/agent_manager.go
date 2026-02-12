@@ -6,6 +6,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
@@ -106,9 +107,13 @@ func (am *AgentManager) monitorLoop() {
 
 			// Generate INACTIVE_OBJECT alert
 			if am.alertCore != nil {
+				alertLevel := byte(0)
+				if cfg := config.Get(); cfg != nil {
+					alertLevel = byte(cfg.ObjectInactiveAlertLevel())
+				}
 				am.alertCore.Add(&pack.AlertPack{
 					Time:    time.Now().UnixMilli(),
-					Level:   0, // INFO
+					Level:   alertLevel,
 					ObjType: "scouter",
 					ObjHash: d.Pack.ObjHash,
 					Title:   "INACTIVE_OBJECT",

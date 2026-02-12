@@ -11,23 +11,34 @@ import (
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-// resolveText looks up text by hash: memory cache → disk.
-func resolveText(textCache *cache.TextCache, textRD *text.TextRD, typeName string, h int32) (string, bool) {
+// resolveText looks up text by hash: memory cache → writer (up-to-date index) → reader (stale index).
+// TextWR is checked before TextRD because TextRD's MemHashBlock is a snapshot
+// from when it was opened and cannot see data written after startup.
+func resolveText(textCache *cache.TextCache, textWR *text.TextWR, textRD *text.TextRD, typeName string, h int32) (string, bool) {
 	if txt, found := textCache.Get(typeName, h); found {
 		return txt, true
 	}
-	if textRD == nil {
-		return "", false
+	// Try writer first (has up-to-date MemHashBlock)
+	if textWR != nil {
+		if txt, err := textWR.GetString(typeName, h); err == nil && txt != "" {
+			textCache.Put(typeName, h, txt)
+			return txt, true
+		}
 	}
-	if diskTxt, err := textRD.GetString(typeName, h); err == nil && diskTxt != "" {
-		textCache.Put(typeName, h, diskTxt)
-		return diskTxt, true
+	// Fall back to reader (stale index, but covers data written before server start)
+	if textRD != nil {
+		if txt, err := textRD.GetString(typeName, h); err == nil && txt != "" {
+			textCache.Put(typeName, h, txt)
+			return txt, true
+		}
 	}
 	return "", false
 }
 
 // RegisterTextHandlers registers GET_TEXT_100 and related handlers.
-func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.TextRD) {
+// textWR is used for reading because it has an up-to-date MemHashBlock index,
+// while textRD is a fallback for data written before the server started.
+func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.TextRD, textWR *text.TextWR) {
 	// GET_TEXT_100: resolve text hashes to strings in batches of 100
 	r.Register(protocol.GET_TEXT_100, func(din *protocol.DataInputX, dout *protocol.DataOutputX, login bool) {
 		pk, err := pack.ReadPack(din)
@@ -55,7 +66,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, typeName, h)
+			txt, found := resolveText(textCache, textWR, textRD, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)
@@ -99,7 +110,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, typeName, h)
+			txt, found := resolveText(textCache, textWR, textRD, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -146,7 +157,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			typeName := tv.Value
 
-			txt, found := resolveText(textCache, textRD, typeName, h)
+			txt, found := resolveText(textCache, textWR, textRD, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -184,7 +195,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, typeName, h)
+			txt, found := resolveText(textCache, textWR, textRD, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)
