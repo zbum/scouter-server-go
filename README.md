@@ -1,9 +1,10 @@
 # Scouter Server (Go)
 
-Scouter APM의 백엔드 서버를 Go로 구현한 프로젝트입니다. 모니터링 대상 애플리케이션에서 실행되는 에이전트로부터 성능 메트릭, 트랜잭션 로그, 알림 등의 데이터를 수집하고 저장합니다.
+Scouter APM의 **경량 백엔드 서버**입니다. 기존 Java 서버를 Go로 재작성하여 **메모리 사용량을 약 70% 절감**(Java 대비 30% 수준)하면서 동일한 APM 데이터 수집 기능을 제공합니다. 단일 바이너리로 배포되며, JVM 없이 즉시 실행할 수 있습니다.
 
 ## Features
 
+- **경량 실행 환경**: JVM 불필요, 단일 바이너리 배포, 낮은 메모리 사용량 (Java 서버 대비 ~30%)
 - TCP/UDP 기반 에이전트 데이터 수집 (기본 포트: 6100)
 - XLog, Counter, Profile, Alert, Summary 등 APM 데이터 처리
 - 인메모리 캐시 및 디스크 기반 스토리지
@@ -52,6 +53,7 @@ make run
 
 - [통신 프로토콜 개요](docs/protocol-overview.md) — 바이너리 직렬화, UDP/TCP 패킷 구조, Pack/Value 타입 체계
 - [TCP 에이전트 프로토콜 상세](docs/tcp-agent-protocol.md) — 에이전트 연결 수립, 커넥션 풀, Keepalive, RPC 호출 패턴
+- [Text Cache Database](docs/text-cache-database.md) — 해시 기반 텍스트 저장소, 3계층 캐시 구조, 디스크 파일 포맷, 일별 로테이션
 
 ## License
 
