@@ -19,10 +19,12 @@ import (
 
 // ServerConfig holds TCP server configuration.
 type ServerConfig struct {
-	ListenIP      string
-	ListenPort    int
-	ClientTimeout time.Duration
-	AgentConfig   AgentManagerConfig
+	ListenIP        string
+	ListenPort      int
+	ClientTimeout   time.Duration
+	AgentSoTimeout  time.Duration
+	ServicePoolSize int
+	AgentConfig     AgentManagerConfig
 }
 
 func DefaultServerConfig() ServerConfig {
@@ -43,16 +45,22 @@ type Server struct {
 	agentCaller  *AgentCall
 	listener     net.Listener
 	wg           sync.WaitGroup
+	sem          chan struct{} // semaphore for client connection limiting
 }
 
 func NewServer(config ServerConfig, registry *service.Registry, sessions *login.SessionManager) *Server {
 	mgr := NewAgentManagerWithConfig(config.AgentConfig)
+	poolSize := config.ServicePoolSize
+	if poolSize <= 0 {
+		poolSize = 100
+	}
 	return &Server{
 		config:       config,
 		registry:     registry,
 		sessions:     sessions,
 		agentManager: mgr,
 		agentCaller:  NewAgentCall(mgr),
+		sem:          make(chan struct{}, poolSize),
 	}
 }
 
@@ -104,8 +112,17 @@ func (s *Server) Start(ctx context.Context) error {
 			}
 		}
 
+		// Acquire semaphore slot (limits concurrent client connections)
+		select {
+		case s.sem <- struct{}{}:
+		case <-ctx.Done():
+			conn.Close()
+			continue
+		}
+
 		s.wg.Add(1)
 		go func() {
+			defer func() { <-s.sem }()
 			defer s.wg.Done()
 			s.handleConnection(ctx, conn)
 		}()
@@ -145,7 +162,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 		slog.Info("TCP agent connected", "addr", remoteAddr, "objHash", objHashInt, "protocol", cafe)
 
 		// Create worker and add to pool (connection is NOT closed here — it's pooled)
-		worker := NewAgentWorker(conn, reader, writer, cafe, objHashInt)
+		worker := NewAgentWorker(conn, reader, writer, cafe, objHashInt, s.config.AgentSoTimeout)
 		s.agentManager.Add(objHashInt, worker)
 
 	default:

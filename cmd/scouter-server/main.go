@@ -13,7 +13,6 @@ import (
 	"github.com/zbum/scouter-server-go/internal/config"
 	scoutercounter "github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core"
-	"github.com/zbum/scouter-server-go/internal/logging"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db"
 	"github.com/zbum/scouter-server-go/internal/db/alert"
@@ -22,13 +21,17 @@ import (
 	"github.com/zbum/scouter-server-go/internal/db/profile"
 	"github.com/zbum/scouter-server-go/internal/db/summary"
 	dbtext "github.com/zbum/scouter-server-go/internal/db/text"
+	"github.com/zbum/scouter-server-go/internal/db/visitor"
 	"github.com/zbum/scouter-server-go/internal/db/xlog"
+	"github.com/zbum/scouter-server-go/internal/geoip"
 	scouterhttp "github.com/zbum/scouter-server-go/internal/http"
+	"github.com/zbum/scouter-server-go/internal/logging"
 	"github.com/zbum/scouter-server-go/internal/login"
 	"github.com/zbum/scouter-server-go/internal/netio/service"
 	"github.com/zbum/scouter-server-go/internal/netio/tcp"
 	"github.com/zbum/scouter-server-go/internal/netio/udp"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
+	"github.com/zbum/scouter-server-go/internal/tagcnt"
 )
 
 var (
@@ -65,6 +68,11 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewTextHandler(logWriter, &slog.HandlerOptions{Level: logLevel})))
 
 	slog.Info("Scouter Server (Go) starting", "version", Version, "build", BuildTime)
+
+	// --- Create temp directory ---
+	if err := os.MkdirAll(cfg.TempDir(), 0755); err != nil {
+		slog.Warn("Failed to create temp directory", "path", cfg.TempDir(), "error", err)
+	}
 
 	// --- Caches ---
 	textCache := cache.NewTextCacheWithSize(cfg.TextCacheMaxSize())
@@ -148,14 +156,56 @@ func main() {
 	// --- Core processors ---
 	textCore := core.NewTextCore(textCache, textWR)
 	xlogGroupPerf := core.NewXLogGroupPerf(textCache, textRD)
-	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR, xlogGroupPerf)
+	deadTimeout := time.Duration(cfg.ObjectDeadTimeMs()) * time.Millisecond
+
+	// --- Optional subsystems for XLogCore ---
+	var xlogOpts []core.XLogCoreOption
+	xlogOpts = append(xlogOpts, core.WithObjectCache(objectCache))
+
+	// GeoIP
+	var geoIPUtil *geoip.GeoIPUtil
+	if cfg.GeoIPEnabled() {
+		geoIPUtil = geoip.New(cfg.GeoIPDataCityFile())
+		xlogOpts = append(xlogOpts, core.WithGeoIP(geoIPUtil))
+		slog.Info("GeoIP lookup enabled", "db", cfg.GeoIPDataCityFile())
+	}
+
+	// SQL table parser
+	sqlTables := core.NewSqlTables(textCache, textWR)
+	xlogOpts = append(xlogOpts, core.WithSqlTables(sqlTables))
+
+	// Visitor counting
+	visitorDB := visitor.NewVisitorDB(dataDir)
+	visitorDB.StartFlusher(ctx.Done())
+	var hourlyDB *visitor.VisitorHourlyDB
+	if cfg.VisitorHourlyCountEnabled() {
+		hourlyDB = visitor.NewVisitorHourlyDB(dataDir)
+		hourlyDB.StartFlusher(ctx.Done())
+		slog.Info("Visitor hourly counting enabled")
+	}
+	visitorCore := core.NewVisitorCore(visitorDB, hourlyDB, objectCache, cfg.VisitorHourlyCountEnabled())
+	xlogOpts = append(xlogOpts, core.WithVisitorCore(visitorCore))
+
+	// Tag counting
+	var tagCountCore *tagcnt.TagCountCore
+	if cfg.TagcntEnabled() {
+		tagCountCore = tagcnt.NewTagCountCore(dataDir)
+		xlogOpts = append(xlogOpts, core.WithTagCountCore(tagCountCore))
+		slog.Info("Tag counting enabled")
+	}
+
+	xlogCore := core.NewXLogCore(xlogCache, xlogWR, profileWR, xlogGroupPerf, xlogOpts...)
 	perfCountCore := core.NewPerfCountCore(counterCache, counterWR)
 	profileCore := core.NewProfileCore(profileWR)
-	deadTimeout := time.Duration(cfg.ObjectDeadTimeMs()) * time.Millisecond
 	typeManager := scoutercounter.NewObjectTypeManager()
 	alertCore := core.NewAlertCore(alertWR, alertCache)
 	agentManager := core.NewAgentManager(objectCache, deadTimeout, typeManager, textCache, textCore, alertCore)
 	summaryCore := core.NewSummaryCore(summaryWR)
+
+	// --- Cleanup for optional subsystems ---
+	if geoIPUtil != nil {
+		defer geoIPUtil.Close()
+	}
 
 	// --- Dispatcher ---
 	dispatcher := core.NewDispatcher()
@@ -207,7 +257,7 @@ func main() {
 	service.RegisterActiveSpeedHandlers(registry, counterCache, objectCache, deadTimeout)
 	service.RegisterLoginExtHandlers(registry, sessions, accountManager)
 	service.RegisterAccountHandlers(registry, accountManager)
-	service.RegisterVisitorHandlers(registry)
+	service.RegisterVisitorHandlers(registry, visitorDB, hourlyDB, objectCache, deadTimeout)
 	service.RegisterAlertExtHandlers(registry, summaryRD)
 	service.RegisterGroupHandlers(registry, xlogGroupPerf, textCache)
 
@@ -223,9 +273,11 @@ func main() {
 
 	// --- TCP server ---
 	tcpConfig := tcp.ServerConfig{
-		ListenIP:      cfg.NetTCPListenIP(),
-		ListenPort:    cfg.TCPPort(),
-		ClientTimeout: time.Duration(cfg.NetTcpClientSoTimeoutMs()) * time.Millisecond,
+		ListenIP:        cfg.NetTCPListenIP(),
+		ListenPort:      cfg.TCPPort(),
+		ClientTimeout:   time.Duration(cfg.NetTcpClientSoTimeoutMs()) * time.Millisecond,
+		AgentSoTimeout:  time.Duration(cfg.NetTcpAgentSoTimeoutMs()) * time.Millisecond,
+		ServicePoolSize: cfg.NetTcpServicePoolSize(),
 		AgentConfig: tcp.AgentManagerConfig{
 			KeepaliveInterval: time.Duration(cfg.NetTcpAgentKeepaliveIntervalMs()) * time.Millisecond,
 			GetConnWait:       time.Duration(cfg.NetTcpGetAgentConnectionWaitMs()) * time.Millisecond,
@@ -266,6 +318,9 @@ func main() {
 			cfg.MgrPurgeXLogKeepDays(),
 			cfg.MgrPurgeSumDataDays(),
 			cfg.MgrPurgeCounterKeepDays(),
+			cfg.MgrPurgeRealtimeCounterKeepDays(),
+			cfg.MgrPurgeDailyTextDays(),
+			cfg.MgrPurgeDiskUsagePct(),
 		)
 		dataPurger.Start(ctx)
 		slog.Info("Data purge scheduler started",
@@ -273,6 +328,9 @@ func main() {
 			"xlogKeepDays", cfg.MgrPurgeXLogKeepDays(),
 			"sumKeepDays", cfg.MgrPurgeSumDataDays(),
 			"counterKeepDays", cfg.MgrPurgeCounterKeepDays(),
+			"realtimeCounterKeepDays", cfg.MgrPurgeRealtimeCounterKeepDays(),
+			"dailyTextKeepDays", cfg.MgrPurgeDailyTextDays(),
+			"diskUsagePct", cfg.MgrPurgeDiskUsagePct(),
 		)
 	}
 
@@ -283,6 +341,9 @@ func main() {
 			CorsAllowOrigin:      cfg.NetHTTPApiCorsAllowOrigin(),
 			CorsAllowCredentials: cfg.NetHTTPApiCorsAllowCredentials(),
 			GzipEnabled:          cfg.NetHTTPApiGzipEnabled(),
+			ClientDir:            cfg.ClientDir(),
+			AccountManager:       accountManager,
+			SessionTimeout:       time.Duration(cfg.NetHTTPApiSessionTimeout()) * time.Second,
 			ObjectCache:          objectCache,
 			CounterCache:         counterCache,
 			XLogCache:            xlogCache,

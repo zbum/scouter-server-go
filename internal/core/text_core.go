@@ -3,7 +3,9 @@ package core
 import (
 	"log/slog"
 	"net"
+	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/text"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
@@ -55,7 +57,30 @@ func (tc *TextCore) run() {
 	for tp := range tc.queue {
 		slog.Debug("TextCore processing", "type", tp.XType, "hash", tp.Hash, "text", tp.Text)
 		if tc.textWR != nil {
+			// Route to daily text storage if configured for this type
+			if shouldUseDailyText(tp.XType) {
+				date := time.Now().Format("20060102")
+				tc.textWR.AddDaily(date, tp.XType, tp.Hash, tp.Text)
+			}
+			// Always write to permanent storage as well
 			tc.textWR.Add(tp.XType, tp.Hash, tp.Text)
 		}
 	}
+}
+
+// shouldUseDailyText returns true if the text type should also be stored in daily text directories.
+func shouldUseDailyText(div string) bool {
+	cfg := config.Get()
+	if cfg == nil {
+		return false
+	}
+	switch div {
+	case "service":
+		return cfg.MgrTextDbDailyServiceEnabled()
+	case "apicall":
+		return cfg.MgrTextDbDailyApiEnabled()
+	case "ua":
+		return cfg.MgrTextDbDailyUaEnabled()
+	}
+	return false
 }

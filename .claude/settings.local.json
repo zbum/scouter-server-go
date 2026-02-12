@@ -51,7 +51,9 @@
       "Bash(direnv allow:*)",
       "Bash(make test:*)",
       "Bash(./dist/scouter-server:*)",
-      "Bash(gtimeout:*)"
+      "Bash(gtimeout:*)",
+      "Bash(cat:*)",
+      "Bash(go run:*)"
     ]
   }
 }

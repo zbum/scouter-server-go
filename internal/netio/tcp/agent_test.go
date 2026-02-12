@@ -73,7 +73,7 @@ func TestAgentManager_AddGet(t *testing.T) {
 		conn, _ := ln.Accept()
 		reader := bufio.NewReaderSize(conn, 4096)
 		writer := bufio.NewWriterSize(conn, 4096)
-		worker := NewAgentWorker(conn, reader, writer, uint32(protocol.TCP_AGENT), 100)
+		worker := NewAgentWorker(conn, reader, writer, uint32(protocol.TCP_AGENT), 100, 0)
 		mgr.Add(100, worker)
 	}()
 
@@ -118,7 +118,7 @@ func TestAgentWorker_WriteRead_V1(t *testing.T) {
 	sReader := bufio.NewReaderSize(server, 4096)
 	sWriter := bufio.NewWriterSize(server, 4096)
 
-	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT), 42)
+	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT), 42, 0)
 
 	// Agent side: read command, respond
 	go func() {
@@ -198,7 +198,7 @@ func TestAgentWorker_WriteRead_V2(t *testing.T) {
 	sReader := bufio.NewReaderSize(server, 4096)
 	sWriter := bufio.NewWriterSize(server, 4096)
 
-	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT_V2), 42)
+	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT_V2), 42, 0)
 
 	// Agent side: read v2 frame, respond
 	go func() {
@@ -287,7 +287,7 @@ func TestAgentCall_Call(t *testing.T) {
 
 	sReader := bufio.NewReaderSize(server, 4096)
 	sWriter := bufio.NewWriterSize(server, 4096)
-	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT), 50)
+	worker := NewAgentWorker(server, sReader, sWriter, uint32(protocol.TCP_AGENT), 50, 0)
 	mgr.Add(50, worker)
 
 	// Agent side: handle command and respond

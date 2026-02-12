@@ -6,7 +6,10 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
+
+	"github.com/zbum/scouter-server-go/internal/util"
 )
 
 // DataPurgeScheduler implements per-type data purging with different retention
@@ -20,20 +23,26 @@ import (
 type DataPurgeScheduler struct {
 	baseDir string
 
-	profileKeepDays int
-	xlogKeepDays    int
-	sumKeepDays     int
-	counterKeepDays int
+	profileKeepDays         int
+	xlogKeepDays            int
+	sumKeepDays             int
+	counterKeepDays         int
+	realtimeCounterKeepDays int
+	dailyTextKeepDays       int
+	diskUsagePct            int
 }
 
 // NewDataPurgeScheduler creates a new per-type data purge scheduler.
-func NewDataPurgeScheduler(baseDir string, profileKeepDays, xlogKeepDays, sumKeepDays, counterKeepDays int) *DataPurgeScheduler {
+func NewDataPurgeScheduler(baseDir string, profileKeepDays, xlogKeepDays, sumKeepDays, counterKeepDays, realtimeCounterKeepDays, dailyTextKeepDays, diskUsagePct int) *DataPurgeScheduler {
 	return &DataPurgeScheduler{
-		baseDir:         baseDir,
-		profileKeepDays: profileKeepDays,
-		xlogKeepDays:    xlogKeepDays,
-		sumKeepDays:     sumKeepDays,
-		counterKeepDays: counterKeepDays,
+		baseDir:                 baseDir,
+		profileKeepDays:         profileKeepDays,
+		xlogKeepDays:            xlogKeepDays,
+		sumKeepDays:             sumKeepDays,
+		counterKeepDays:         counterKeepDays,
+		realtimeCounterKeepDays: realtimeCounterKeepDays,
+		dailyTextKeepDays:       dailyTextKeepDays,
+		diskUsagePct:            diskUsagePct,
 	}
 }
 
@@ -62,7 +71,12 @@ func (s *DataPurgeScheduler) purgeAll() {
 	s.purgeByType(today, s.profileKeepDays, "profile", s.deleteProfile)
 	s.purgeByType(today, s.xlogKeepDays, "xlog", s.deleteXLog)
 	s.purgeByType(today, s.sumKeepDays, "summary", s.deleteSummary)
+	s.purgeByType(today, s.realtimeCounterKeepDays, "realtime_counter", s.deleteRealtimeCounter)
+	s.purgeByType(today, s.dailyTextKeepDays, "daily_text", s.deleteDailyText)
 	s.purgeByType(today, s.counterKeepDays, "all", s.deleteAll)
+
+	// Disk usage based purge: delete oldest date directories until under threshold
+	s.purgeDiskUsage(today)
 }
 
 // purgeByType iterates over date directories and deletes data older than keepDays.
@@ -141,6 +155,58 @@ func (s *DataPurgeScheduler) deleteSummary(date string) bool {
 func (s *DataPurgeScheduler) deleteAll(date string) bool {
 	dir := filepath.Join(s.baseDir, date)
 	return removeIfExists(dir)
+}
+
+// deleteRealtimeCounter removes realtime counter files from {date}/counter/ directory.
+func (s *DataPurgeScheduler) deleteRealtimeCounter(date string) bool {
+	counterDir := filepath.Join(s.baseDir, date, "counter")
+	if _, err := os.Stat(counterDir); os.IsNotExist(err) {
+		return false
+	}
+
+	entries, err := os.ReadDir(counterDir)
+	if err != nil {
+		return false
+	}
+
+	deleted := false
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "real") {
+			path := filepath.Join(counterDir, entry.Name())
+			if err := os.Remove(path); err == nil {
+				deleted = true
+			}
+		}
+	}
+	return deleted
+}
+
+// deleteDailyText removes the {date}/text/ directory.
+func (s *DataPurgeScheduler) deleteDailyText(date string) bool {
+	dir := filepath.Join(s.baseDir, date, "text")
+	return removeIfExists(dir)
+}
+
+// purgeDiskUsage deletes oldest date directories when disk usage exceeds threshold.
+func (s *DataPurgeScheduler) purgeDiskUsage(today string) {
+	if s.diskUsagePct <= 0 {
+		return
+	}
+
+	dates := s.listDateDirs()
+	for _, date := range dates {
+		if date == today {
+			continue
+		}
+		usage := util.DiskUsagePct(s.baseDir)
+		if usage <= s.diskUsagePct {
+			break
+		}
+		dir := filepath.Join(s.baseDir, date)
+		if removeIfExists(dir) {
+			slog.Info("DataPurge: disk usage purge", "date", date, "usage%", usage, "threshold%", s.diskUsagePct)
+		}
+	}
 }
 
 // removeIfExists removes a file or directory if it exists.

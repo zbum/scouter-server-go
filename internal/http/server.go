@@ -1,18 +1,23 @@
 package http
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/alert"
 	"github.com/zbum/scouter-server-go/internal/db/counter"
 	"github.com/zbum/scouter-server-go/internal/db/xlog"
+	"github.com/zbum/scouter-server-go/internal/login"
 	"github.com/zbum/scouter-server-go/internal/protocol/value"
 )
 
@@ -40,6 +45,9 @@ type ServerConfig struct {
 	CorsAllowOrigin      string
 	CorsAllowCredentials string
 	GzipEnabled          bool
+	ClientDir            string
+	AccountManager       *login.AccountManager
+	SessionTimeout       time.Duration
 	ObjectCache          *cache.ObjectCache
 	CounterCache         *cache.CounterCache
 	XLogCache            *cache.XLogCache
@@ -80,9 +88,36 @@ func NewServer(cfg ServerConfig) *Server {
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/api/v1/server/info", s.handleServerInfo)
 
+	// Serve static client files if client_dir exists
+	if cfg.ClientDir != "" {
+		if info, err := os.Stat(cfg.ClientDir); err == nil && info.IsDir() {
+			mux.Handle("/client/", http.StripPrefix("/client/", http.FileServer(http.Dir(cfg.ClientDir))))
+			slog.Info("HTTP static file serving enabled", "path", cfg.ClientDir)
+		}
+	}
+
+	// Build middleware chain: cors → auth → gzip → mux
+	var handler http.Handler = mux
+
+	// Gzip middleware
+	if s.gzipEnabled {
+		handler = gzipMiddleware(handler)
+	}
+
+	// Auth middleware
+	sessionTimeout := cfg.SessionTimeout
+	if sessionTimeout <= 0 {
+		sessionTimeout = 24 * time.Hour
+	}
+	sessionStore := NewHTTPSessionStore(sessionTimeout)
+	handler = authMiddleware(cfg.AccountManager, sessionStore)(handler)
+
+	// CORS middleware (outermost)
+	handler = s.corsMiddleware(handler)
+
 	s.httpServer = &http.Server{
 		Addr:    net.JoinHostPort("", strconv.Itoa(s.port)),
-		Handler: s.corsMiddleware(mux),
+		Handler: handler,
 	}
 	return s
 }
@@ -99,6 +134,31 @@ func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+// gzipResponseWriter wraps http.ResponseWriter to compress response with gzip.
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
+// gzipMiddleware applies gzip compression to responses when client supports it.
+func gzipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		w.Header().Set("Content-Encoding", "gzip")
+		gz := gzip.NewWriter(w)
+		defer gz.Close()
+		gzw := gzipResponseWriter{Writer: gz, ResponseWriter: w}
+		next.ServeHTTP(gzw, r)
 	})
 }
 

@@ -5,6 +5,13 @@ import (
 	"sync"
 )
 
+// dailyTextTypes lists the text types that can use daily storage.
+var dailyTextTypes = map[string]bool{
+	"service": true,
+	"apicall": true,
+	"ua":      true,
+}
+
 // cacheKey uniquely identifies a cached text entry.
 type cacheKey struct {
 	Div  string
@@ -14,17 +21,19 @@ type cacheKey struct {
 // TextRD provides text reading with caching.
 // All text data is read from a single "00000000" directory.
 type TextRD struct {
-	mu      sync.Mutex
-	baseDir string
-	table   *TextTable
-	cache   map[cacheKey]string // in-memory cache
+	mu          sync.Mutex
+	baseDir     string
+	table       *TextTable
+	dailyTables map[string]*TextTable // date → TextTable for daily text
+	cache       map[cacheKey]string   // in-memory cache
 }
 
 // NewTextRD creates a new text reader.
 func NewTextRD(baseDir string) *TextRD {
 	return &TextRD{
-		baseDir: baseDir,
-		cache:   make(map[cacheKey]string),
+		baseDir:     baseDir,
+		dailyTables: make(map[string]*TextTable),
+		cache:       make(map[cacheKey]string),
 	}
 }
 
@@ -79,6 +88,42 @@ func (r *TextRD) getTable() (*TextTable, error) {
 	return table, nil
 }
 
+// GetDailyString reads a text from a date-specific directory.
+func (r *TextRD) GetDailyString(date, div string, hash int32) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	table, err := r.getDailyTable(date)
+	if err != nil {
+		return "", err
+	}
+
+	text, found, err := table.Get(div, hash)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+	return text, nil
+}
+
+// getDailyTable returns the TextTable for a specific date, creating it if necessary.
+func (r *TextRD) getDailyTable(date string) (*TextTable, error) {
+	if table, ok := r.dailyTables[date]; ok {
+		return table, nil
+	}
+
+	dir := filepath.Join(r.baseDir, date, "text")
+	table, err := NewTextTable(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	r.dailyTables[date] = table
+	return table, nil
+}
+
 // Close closes the text table and clears the cache.
 func (r *TextRD) Close() {
 	r.mu.Lock()
@@ -88,5 +133,9 @@ func (r *TextRD) Close() {
 		r.table.Close()
 		r.table = nil
 	}
+	for _, t := range r.dailyTables {
+		t.Close()
+	}
+	r.dailyTables = make(map[string]*TextTable)
 	r.cache = make(map[cacheKey]string)
 }

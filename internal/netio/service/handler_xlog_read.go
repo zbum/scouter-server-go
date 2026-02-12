@@ -314,7 +314,17 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := util.FormatDate(stime)
 		date2 := util.FormatDate(etime)
 
+		// req_search_xlog_max_count: limit max results
+		maxCount := 0
+		if cfg := config.Get(); cfg != nil {
+			maxCount = cfg.ReqSearchXLogMaxCount()
+		}
+		cnt := 0
+
 		searchHandler := func(data []byte) bool {
+			if maxCount > 0 && cnt >= maxCount {
+				return false
+			}
 			if objHash != 0 {
 				innerDin := protocol.NewDataInputX(data)
 				xp, err := pack.ReadPack(innerDin)
@@ -330,6 +340,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
 			dout.Flush()
+			cnt++
 			return true
 		}
 

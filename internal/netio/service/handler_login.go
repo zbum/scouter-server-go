@@ -68,8 +68,22 @@ func RegisterLoginHandlers(r *Registry, sessions *login.SessionManager, accountM
 			m.PutLong("so_time_out", soTimeout)
 
 			menuMap := value.NewMapValue()
-			menuMap.Put("tag_count", &value.BooleanValue{Value: true})
+			tagcntEnabled := true
+			if cfg := config.Get(); cfg != nil {
+				tagcntEnabled = cfg.TagcntEnabled()
+			}
+			menuMap.Put("tag_count", &value.BooleanValue{Value: tagcntEnabled})
 			m.Put("menu", menuMap)
+
+			// ext_link_name + ext_link_url_pattern
+			if cfg := config.Get(); cfg != nil {
+				if extName := cfg.ExtLinkName(); extName != "" {
+					m.PutStr("ext_link_name", extName)
+				}
+				if extUrl := cfg.ExtLinkUrlPattern(); extUrl != "" {
+					m.PutStr("ext_link_url_pattern", extUrl)
+				}
+			}
 		}
 
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)

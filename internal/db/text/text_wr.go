@@ -23,22 +23,25 @@ type dupKey struct {
 
 // TextWR provides async text writing with deduplication.
 // All text data is stored in a single "00000000" directory.
+// Daily text data can be stored in per-date directories.
 type TextWR struct {
-	mu       sync.Mutex
-	baseDir  string
-	table    *TextTable
-	dupCheck map[dupKey]struct{} // in-memory dedup cache
-	queue    chan *TextData
-	closed   bool
-	wg       sync.WaitGroup
+	mu          sync.Mutex
+	baseDir     string
+	table       *TextTable
+	dailyTables map[string]*TextTable // date → TextTable for daily text
+	dupCheck    map[dupKey]struct{}   // in-memory dedup cache
+	queue       chan *TextData
+	closed      bool
+	wg          sync.WaitGroup
 }
 
 // NewTextWR creates a new async text writer.
 func NewTextWR(baseDir string) *TextWR {
 	return &TextWR{
-		baseDir:  baseDir,
-		dupCheck: make(map[dupKey]struct{}),
-		queue:    make(chan *TextData, 10000),
+		baseDir:     baseDir,
+		dailyTables: make(map[string]*TextTable),
+		dupCheck:    make(map[dupKey]struct{}),
+		queue:       make(chan *TextData, 10000),
 	}
 }
 
@@ -143,6 +146,55 @@ func (w *TextWR) GetString(div string, hash int32) (string, error) {
 	return text, nil
 }
 
+// AddDaily stores a text entry in a date-specific directory (for daily text types like SERVICE, APICALL, UA).
+func (w *TextWR) AddDaily(date, div string, hash int32, text string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	table, err := w.getDailyTable(date)
+	if err != nil {
+		return
+	}
+
+	table.Set(div, hash, text)
+}
+
+// GetDailyString reads a text from a date-specific directory.
+func (w *TextWR) GetDailyString(date, div string, hash int32) (string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	table, err := w.getDailyTable(date)
+	if err != nil {
+		return "", err
+	}
+
+	text, found, err := table.Get(div, hash)
+	if err != nil {
+		return "", err
+	}
+	if !found {
+		return "", nil
+	}
+	return text, nil
+}
+
+// getDailyTable returns the TextTable for a specific date, creating it if necessary.
+func (w *TextWR) getDailyTable(date string) (*TextTable, error) {
+	if table, ok := w.dailyTables[date]; ok {
+		return table, nil
+	}
+
+	dir := filepath.Join(w.baseDir, date, "text")
+	table, err := NewTextTable(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	w.dailyTables[date] = table
+	return table, nil
+}
+
 // Flush waits for all pending writes to complete.
 func (w *TextWR) Flush() {
 	w.wg.Wait()
@@ -163,5 +215,9 @@ func (w *TextWR) Close() {
 		w.table.Close()
 		w.table = nil
 	}
+	for _, t := range w.dailyTables {
+		t.Close()
+	}
+	w.dailyTables = make(map[string]*TextTable)
 	w.dupCheck = make(map[dupKey]struct{})
 }

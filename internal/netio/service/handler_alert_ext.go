@@ -214,8 +214,12 @@ func RegisterAlertExtHandlers(r *Registry, summaryRD *summary.SummaryRD) {
 }
 
 // getPluginDir returns the configured plugin directory, or empty string.
+// Returns empty string if plugin_enabled is false.
 func getPluginDir() string {
 	if cfg := config.Get(); cfg != nil {
+		if !cfg.PluginEnabled() {
+			return ""
+		}
 		return cfg.PluginDir()
 	}
 	return ""

@@ -27,7 +27,7 @@ func TestDataPurgeScheduler_PurgeProfile(t *testing.T) {
 	}
 
 	// Profile keep 10 days: oldDate (15 days) should be purged, newDate (5 days) should remain
-	scheduler := NewDataPurgeScheduler(dir, 10, 0, 0, 0)
+	scheduler := NewDataPurgeScheduler(dir, 10, 0, 0, 0, 0, 0, 0)
 	scheduler.purgeAll()
 
 	// Old date: profile files should be deleted, xlog files should remain
@@ -61,7 +61,7 @@ func TestDataPurgeScheduler_PurgeXLog(t *testing.T) {
 	}
 
 	// XLog keep 30 days: oldDate (35 days) should have xlog dir deleted
-	scheduler := NewDataPurgeScheduler(dir, 0, 30, 0, 0)
+	scheduler := NewDataPurgeScheduler(dir, 0, 30, 0, 0, 0, 0, 0)
 	scheduler.purgeAll()
 
 	// Old date: xlog dir should be gone, counter should remain
@@ -88,7 +88,7 @@ func TestDataPurgeScheduler_PurgeSummary(t *testing.T) {
 	os.WriteFile(filepath.Join(sumDir, "sum.data"), []byte("sum"), 0644)
 
 	// Summary keep 60 days
-	scheduler := NewDataPurgeScheduler(dir, 0, 0, 60, 0)
+	scheduler := NewDataPurgeScheduler(dir, 0, 0, 60, 0, 0, 0, 0)
 	scheduler.purgeAll()
 
 	if _, err := os.Stat(filepath.Join(dir, oldDate, "summary")); !os.IsNotExist(err) {
@@ -108,7 +108,7 @@ func TestDataPurgeScheduler_PurgeAll(t *testing.T) {
 	os.MkdirAll(filepath.Join(dateDir, "alert"), 0755)
 
 	// Counter keep 70 days (triggers full directory deletion)
-	scheduler := NewDataPurgeScheduler(dir, 0, 0, 0, 70)
+	scheduler := NewDataPurgeScheduler(dir, 0, 0, 0, 70, 0, 0, 0)
 	scheduler.purgeAll()
 
 	if _, err := os.Stat(dateDir); !os.IsNotExist(err) {
@@ -125,7 +125,7 @@ func TestDataPurgeScheduler_DoNotDeleteToday(t *testing.T) {
 	os.WriteFile(filepath.Join(xlogDir, "xlog.data"), []byte("data"), 0644)
 
 	// Even with keepDays=0, today should not be deleted (purge skips keepDays <= 0)
-	scheduler := NewDataPurgeScheduler(dir, 1, 1, 1, 1)
+	scheduler := NewDataPurgeScheduler(dir, 1, 1, 1, 1, 0, 0, 0)
 	scheduler.purgeAll()
 
 	if _, err := os.Stat(filepath.Join(dir, today, "xlog", "xlog.data")); os.IsNotExist(err) {
@@ -154,7 +154,7 @@ func TestDataPurgeScheduler_GraduatedPurge(t *testing.T) {
 	os.WriteFile(filepath.Join(sumDir, "sum.data"), []byte("sum"), 0644)
 
 	// Profile=10, XLog=30, Sum=60, Counter=70
-	scheduler := NewDataPurgeScheduler(dir, 10, 30, 60, 70)
+	scheduler := NewDataPurgeScheduler(dir, 10, 30, 60, 70, 0, 0, 0)
 	scheduler.purgeAll()
 
 	// Profile files should be deleted (20 > 10)

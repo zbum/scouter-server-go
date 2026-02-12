@@ -5,11 +5,14 @@ import (
 	"net"
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/profile"
 	"github.com/zbum/scouter-server-go/internal/db/xlog"
+	"github.com/zbum/scouter-server-go/internal/geoip"
 	"github.com/zbum/scouter-server-go/internal/protocol"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
+	"github.com/zbum/scouter-server-go/internal/tagcnt"
 )
 
 // XLogCore processes incoming XLogPack data, caching and storing transaction logs.
@@ -19,16 +22,51 @@ type XLogCore struct {
 	profileWR     *profile.ProfileWR
 	xlogGroupPerf *XLogGroupPerf
 	queue         chan *pack.XLogPack
-
+	geoIP         *geoip.GeoIPUtil
+	sqlTables     *SqlTables
+	visitorCore   *VisitorCore
+	tagCountCore  *tagcnt.TagCountCore
+	objectCache   *cache.ObjectCache
 }
 
-func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR, xlogGroupPerf *XLogGroupPerf) *XLogCore {
+// XLogCoreOption configures optional XLogCore dependencies.
+type XLogCoreOption func(*XLogCore)
+
+// WithGeoIP sets the GeoIP lookup util.
+func WithGeoIP(g *geoip.GeoIPUtil) XLogCoreOption {
+	return func(xc *XLogCore) { xc.geoIP = g }
+}
+
+// WithSqlTables sets the SQL table extractor.
+func WithSqlTables(st *SqlTables) XLogCoreOption {
+	return func(xc *XLogCore) { xc.sqlTables = st }
+}
+
+// WithVisitorCore sets the visitor counting core.
+func WithVisitorCore(vc *VisitorCore) XLogCoreOption {
+	return func(xc *XLogCore) { xc.visitorCore = vc }
+}
+
+// WithTagCountCore sets the tag counting core.
+func WithTagCountCore(tc *tagcnt.TagCountCore) XLogCoreOption {
+	return func(xc *XLogCore) { xc.tagCountCore = tc }
+}
+
+// WithObjectCache sets the object cache for type lookups.
+func WithObjectCache(oc *cache.ObjectCache) XLogCoreOption {
+	return func(xc *XLogCore) { xc.objectCache = oc }
+}
+
+func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR, xlogGroupPerf *XLogGroupPerf, opts ...XLogCoreOption) *XLogCore {
 	xc := &XLogCore{
 		xlogCache:     xlogCache,
 		xlogWR:        xlogWR,
 		profileWR:     profileWR,
 		xlogGroupPerf: xlogGroupPerf,
 		queue:         make(chan *pack.XLogPack, 4096),
+	}
+	for _, opt := range opts {
+		opt(xc)
 	}
 	go xc.run()
 	return xc
@@ -57,6 +95,17 @@ func (xc *XLogCore) run() {
 		// throughput aggregation, matching Scala's XLogCore.calc() filter.
 		isService := xp.XType == pack.XLogTypeWebService || xp.XType == pack.XLogTypeAppService
 
+		// GeoIP lookup
+		if xc.geoIP != nil && len(xp.IPAddr) > 0 {
+			countryCode, _, cityHash := xc.geoIP.Lookup(xp.IPAddr)
+			if countryCode != "" {
+				xp.CountryCode = countryCode
+			}
+			if cityHash != 0 {
+				xp.City = cityHash
+			}
+		}
+
 		// Derive group hash from service URL if not already set (before serialization)
 		if isService && xc.xlogGroupPerf != nil {
 			xc.xlogGroupPerf.Process(xp)
@@ -71,6 +120,24 @@ func (xc *XLogCore) run() {
 		// Aggregate by service group for real-time throughput display
 		if isService && xc.xlogGroupPerf != nil {
 			xc.xlogGroupPerf.Add(xp)
+		}
+
+		// Visitor counting
+		if xc.visitorCore != nil && xp.Userid != 0 {
+			xc.visitorCore.Add(xp)
+		}
+
+		// Tag counting
+		if xc.tagCountCore != nil {
+			if cfg := config.Get(); cfg != nil && cfg.TagcntEnabled() {
+				objType := ""
+				if xc.objectCache != nil {
+					if info, ok := xc.objectCache.Get(xp.ObjHash); ok {
+						objType = info.Pack.ObjType
+					}
+				}
+				xc.tagCountCore.ProcessXLog(objType, xp)
+			}
 		}
 
 		slog.Debug("XLogCore processing",

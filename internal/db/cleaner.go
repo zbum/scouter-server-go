@@ -83,6 +83,10 @@ func isDateDir(s string) bool {
 	if len(s) != 8 {
 		return false
 	}
+	// "00000000" is the permanent text storage directory — never treat as a date dir.
+	if s == "00000000" {
+		return false
+	}
 	for _, c := range s {
 		if c < '0' || c > '9' {
 			return false

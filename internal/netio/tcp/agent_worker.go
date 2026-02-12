@@ -23,10 +23,11 @@ type AgentWorker struct {
 	protocolType  uint32
 	objHash       int32
 	lastWriteTime time.Time
+	soTimeout     time.Duration
 	closed        bool
 }
 
-func NewAgentWorker(conn net.Conn, reader *bufio.Reader, writer *bufio.Writer, protocolType uint32, objHash int32) *AgentWorker {
+func NewAgentWorker(conn net.Conn, reader *bufio.Reader, writer *bufio.Writer, protocolType uint32, objHash int32, soTimeout time.Duration) *AgentWorker {
 	return &AgentWorker{
 		conn:          conn,
 		din:           protocol.NewDataInputXStream(reader),
@@ -35,6 +36,7 @@ func NewAgentWorker(conn net.Conn, reader *bufio.Reader, writer *bufio.Writer, p
 		protocolType:  protocolType,
 		objHash:       objHash,
 		lastWriteTime: time.Now(),
+		soTimeout:     soTimeout,
 	}
 }
 
@@ -45,6 +47,12 @@ func (w *AgentWorker) Write(cmd string, p pack.Pack) error {
 
 	if w.closed {
 		return io.ErrClosedPipe
+	}
+
+	// Apply write deadline from net_tcp_agent_so_timeout_ms
+	if w.soTimeout > 0 {
+		w.conn.SetWriteDeadline(time.Now().Add(w.soTimeout))
+		defer w.conn.SetWriteDeadline(time.Time{})
 	}
 
 	switch w.protocolType {
@@ -76,6 +84,12 @@ func (w *AgentWorker) ReadPack() (pack.Pack, error) {
 		return nil, io.ErrClosedPipe
 	}
 
+	// Apply read deadline from net_tcp_agent_so_timeout_ms
+	if w.soTimeout > 0 {
+		w.conn.SetReadDeadline(time.Now().Add(w.soTimeout))
+		defer w.conn.SetReadDeadline(time.Time{})
+	}
+
 	switch w.protocolType {
 	case uint32(protocol.TCP_AGENT):
 		return pack.ReadPack(w.din)
@@ -98,6 +112,12 @@ func (w *AgentWorker) ReadByte() (byte, error) {
 
 	if w.closed {
 		return 0, io.ErrClosedPipe
+	}
+
+	// Apply read deadline from net_tcp_agent_so_timeout_ms
+	if w.soTimeout > 0 {
+		w.conn.SetReadDeadline(time.Now().Add(w.soTimeout))
+		defer w.conn.SetReadDeadline(time.Time{})
 	}
 
 	b, err := w.din.ReadByte()
