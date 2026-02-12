@@ -48,6 +48,7 @@ func (t *TextTable) getIndex(div string) (*io.IndexKeyFile, error) {
 }
 
 // Set stores a text string with the given div and hash.
+// Checks HasKey first to avoid duplicate entries (matching Java behavior).
 func (t *TextTable) Set(div string, hash int32, text string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -58,6 +59,13 @@ func (t *TextTable) Set(div string, hash int32, text string) error {
 	}
 
 	key := makeHashKey(hash)
+	exists, err := idx.HasKey(key)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
 	return idx.Put(key, []byte(text))
 }
 
