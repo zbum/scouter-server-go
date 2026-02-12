@@ -2,6 +2,7 @@ package io
 
 import (
 	"encoding/binary"
+	"errors"
 	"os"
 	"sync"
 	"time"
@@ -30,7 +31,7 @@ type KeyRecord struct {
 // buffer exceeds appendBufThreshold or before any read/positional-write operation.
 // This reduces disk I/O significantly under high write load.
 type RealKeyFile struct {
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	path      string
 	file      string
 	raf       *os.File
@@ -111,58 +112,114 @@ func (f *RealKeyFile) Interval() time.Duration {
 	return 2 * time.Second
 }
 
+// GetRecord reads a complete record at the given position.
+// For on-disk positions (pos < fileEnd), uses ReadAt without flushing
+// or exclusive locking, enabling concurrent reads from multiple goroutines.
+// For buffered positions, flushes first under exclusive lock.
 func (f *RealKeyFile) GetRecord(pos int64) (*KeyRecord, error) {
+	f.mu.RLock()
+	onDisk := pos < f.fileEnd
+	f.mu.RUnlock()
+
+	if onDisk {
+		return f.getRecordReadAt(pos)
+	}
+
+	// Data might be in appendBuf — flush first under exclusive lock.
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if err := f.flushAppendBuf(); err != nil {
+		f.mu.Unlock()
 		return nil, err
 	}
-	return f.getRecordInternal(pos)
+	f.mu.Unlock()
+	return f.getRecordReadAt(pos)
 }
 
-func (f *RealKeyFile) getRecordInternal(pos int64) (*KeyRecord, error) {
-	if _, err := f.raf.Seek(pos, 0); err != nil {
-		return nil, err
+// getRecordReadAt reads a complete record using a single ReadAt call.
+// Replaces the old getRecordInternal which used 7+ separate Seek+Read syscalls.
+// ReadAt (pread) is thread-safe and doesn't require holding any lock.
+func (f *RealKeyFile) getRecordReadAt(pos int64) (*KeyRecord, error) {
+	// Read a generous buffer — covers 99%+ of records.
+	// Typical XLog time record: 1+5+2+8+1+5 = 22 bytes.
+	var buf [128]byte
+	n, err := f.raf.ReadAt(buf[:], pos)
+	if n < 8 { // minimum: 1(del) + 5(prevPos) + 2(keyLen)
+		if err != nil {
+			return nil, err
+		}
+		return nil, errors.New("record header too short")
 	}
 
 	r := &KeyRecord{}
+	off := 0
 
-	// Read deleted flag (1 byte)
-	var delBuf [1]byte
-	if _, err := f.raf.Read(delBuf[:]); err != nil {
-		return nil, err
-	}
-	r.Deleted = delBuf[0] != 0
+	// deleted (1 byte)
+	r.Deleted = buf[off] != 0
+	off++
 
-	// Read prevPos (5 bytes)
-	var prevBuf [5]byte
-	if _, err := f.raf.Read(prevBuf[:]); err != nil {
-		return nil, err
-	}
-	r.PrevPos = protocol.ToLong5(prevBuf[:], 0)
+	// prevPos (5 bytes)
+	r.PrevPos = protocol.ToLong5(buf[off:off+5], 0)
+	off += 5
 
-	// Read timeKey (short-prefixed bytes: 2B len + data)
-	var lenBuf [2]byte
-	if _, err := f.raf.Read(lenBuf[:]); err != nil {
-		return nil, err
+	// keyLen (2 bytes) + key
+	keyLen := int(binary.BigEndian.Uint16(buf[off : off+2]))
+	off += 2
+
+	if off+keyLen+1 > n { // key + at least blob prefix byte
+		return nil, errors.New("record extends beyond read buffer")
 	}
-	keyLen := int(binary.BigEndian.Uint16(lenBuf[:]))
 	r.TimeKey = make([]byte, keyLen)
-	if keyLen > 0 {
-		if _, err := f.raf.Read(r.TimeKey); err != nil {
-			return nil, err
+	copy(r.TimeKey, buf[off:off+keyLen])
+	off += keyLen
+
+	// blob prefix (1 byte)
+	blobPrefix := int(buf[off]) & 0xFF
+	off++
+
+	// Determine blob data length
+	var blobLen int
+	switch blobPrefix {
+	case 0:
+		r.DataPos = []byte{}
+		r.Offset = pos + int64(off)
+		return r, nil
+	case 255:
+		if off+2 > n {
+			return nil, errors.New("blob length header truncated")
+		}
+		blobLen = int(binary.BigEndian.Uint16(buf[off : off+2]))
+		off += 2
+	case 254:
+		if off+4 > n {
+			return nil, errors.New("blob length header truncated")
+		}
+		blobLen = int(binary.BigEndian.Uint32(buf[off : off+4]))
+		off += 4
+	default:
+		blobLen = blobPrefix
+	}
+
+	// Read blob data
+	r.DataPos = make([]byte, blobLen)
+	if off+blobLen <= n {
+		// Common case: everything fits in the initial buffer read
+		copy(r.DataPos, buf[off:off+blobLen])
+	} else {
+		// Rare case: blob extends beyond initial buffer (e.g. large text values)
+		copied := 0
+		if off < n {
+			copied = n - off
+			copy(r.DataPos[:copied], buf[off:n])
+		}
+		if copied < blobLen {
+			if _, err := f.raf.ReadAt(r.DataPos[copied:], pos+int64(n)); err != nil {
+				return nil, err
+			}
 		}
 	}
+	off += blobLen
 
-	// Read dataPos (blob-prefixed bytes)
-	r.DataPos, _ = f.readBlob()
-
-	// Record current file offset
-	offset, err := f.raf.Seek(0, 1)
-	if err != nil {
-		return nil, err
-	}
-	r.Offset = offset
+	r.Offset = pos + int64(off)
 	return r, nil
 }
 

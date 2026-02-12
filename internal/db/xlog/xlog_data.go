@@ -2,7 +2,6 @@ package xlog
 
 import (
 	"encoding/binary"
-	gio "io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -16,8 +15,9 @@ import (
 type XLogData struct {
 	dataFile *io.RealDataFile
 	path     string
-	readMu   sync.Mutex // protects raf for concurrent reads
-	raf      *os.File   // reusable file handle for reads
+	initOnce sync.Once // ensures raf is opened exactly once
+	initErr  error     // error from lazy init, if any
+	raf      *os.File  // read-only handle for ReadAt (pread), lazily initialized
 }
 
 // NewXLogData opens the XLog data file.
@@ -48,31 +48,31 @@ func (x *XLogData) Write(data []byte) (int64, error) {
 }
 
 // Read reads an XLog entry from the given offset.
-// The file handle is lazily initialized and reused across calls.
+// Uses ReadAt (pread) for lock-free concurrent reads — multiple goroutines
+// can read simultaneously without mutex serialization.
 func (x *XLogData) Read(offset int64) ([]byte, error) {
-	x.readMu.Lock()
-	defer x.readMu.Unlock()
-
-	if x.raf == nil {
+	x.initOnce.Do(func() {
 		f, err := os.Open(x.path)
 		if err != nil {
-			return nil, err
+			x.initErr = err
+			return
 		}
 		x.raf = f
+	})
+	if x.initErr != nil {
+		return nil, x.initErr
 	}
 
-	if _, err := x.raf.Seek(offset, 0); err != nil {
-		return nil, err
-	}
-
+	// Read length header (2 bytes) via pread — no seek, no lock needed
 	var lenBuf [2]byte
-	if _, err := gio.ReadFull(x.raf, lenBuf[:]); err != nil {
+	if _, err := x.raf.ReadAt(lenBuf[:], offset); err != nil {
 		return nil, err
 	}
 	length := binary.BigEndian.Uint16(lenBuf[:])
 
+	// Read body via pread
 	body := make([]byte, length)
-	if _, err := gio.ReadFull(x.raf, body); err != nil {
+	if _, err := x.raf.ReadAt(body, offset+2); err != nil {
 		return nil, err
 	}
 
@@ -86,12 +86,10 @@ func (x *XLogData) Flush() error {
 
 // Close closes the data file and the read handle.
 func (x *XLogData) Close() {
-	x.readMu.Lock()
 	if x.raf != nil {
 		x.raf.Close()
 		x.raf = nil
 	}
-	x.readMu.Unlock()
 
 	if x.dataFile != nil {
 		x.dataFile.Close()

@@ -73,23 +73,14 @@ func (f *IndexKeyFile) Get(key []byte) ([]byte, error) {
 
 	looping := 0
 	for realKeyPos > 0 {
-		deleted, err := f.keyFile.IsDeleted(realKeyPos)
+		r, err := f.keyFile.GetRecord(realKeyPos)
 		if err != nil {
 			return nil, err
 		}
-		if !deleted {
-			oKey, err := f.keyFile.GetTimeKey(realKeyPos)
-			if err != nil {
-				return nil, err
-			}
-			if bytes.Equal(oKey, key) {
-				return f.keyFile.GetDataPos(realKeyPos)
-			}
+		if !r.Deleted && bytes.Equal(r.TimeKey, key) {
+			return r.DataPos, nil
 		}
-		realKeyPos, err = f.keyFile.GetPrevPos(realKeyPos)
-		if err != nil {
-			return nil, err
-		}
+		realKeyPos = r.PrevPos
 		looping++
 	}
 	if looping > 100 {
@@ -105,23 +96,14 @@ func (f *IndexKeyFile) HasKey(key []byte) (bool, error) {
 	keyHash := util.HashBytes(key)
 	pos := f.hashBlock.Get(keyHash)
 	for pos > 0 {
-		deleted, err := f.keyFile.IsDeleted(pos)
+		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
 			return false, err
 		}
-		if !deleted {
-			oKey, err := f.keyFile.GetTimeKey(pos)
-			if err != nil {
-				return false, err
-			}
-			if bytes.Equal(oKey, key) {
-				return true, nil
-			}
+		if !r.Deleted && bytes.Equal(r.TimeKey, key) {
+			return true, nil
 		}
-		pos, err = f.keyFile.GetPrevPos(pos)
-		if err != nil {
-			return false, err
-		}
+		pos = r.PrevPos
 	}
 	return false, nil
 }
@@ -134,27 +116,14 @@ func (f *IndexKeyFile) GetAll(key []byte) ([][]byte, error) {
 	keyHash := util.HashBytes(key)
 	pos := f.hashBlock.Get(keyHash)
 	for pos > 0 {
-		deleted, err := f.keyFile.IsDeleted(pos)
+		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
 			return nil, err
 		}
-		if !deleted {
-			oKey, err := f.keyFile.GetTimeKey(pos)
-			if err != nil {
-				return nil, err
-			}
-			if bytes.Equal(oKey, key) {
-				dp, err := f.keyFile.GetDataPos(pos)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, dp)
-			}
+		if !r.Deleted && bytes.Equal(r.TimeKey, key) {
+			out = append(out, r.DataPos)
 		}
-		pos, err = f.keyFile.GetPrevPos(pos)
-		if err != nil {
-			return nil, err
-		}
+		pos = r.PrevPos
 	}
 	return out, nil
 }

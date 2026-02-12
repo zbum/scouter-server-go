@@ -3,6 +3,7 @@ package service
 import (
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/db/profile"
 	"github.com/zbum/scouter-server-go/internal/db/xlog"
 	"github.com/zbum/scouter-server-go/internal/protocol"
@@ -37,6 +38,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 
 		dout.WriteByte(protocol.FLAG_HAS_NEXT)
 		dout.Write(data)
+		dout.Flush()
 	})
 
 	// XLOG_READ_BY_GXID: retrieve all XLogs related to a global transaction ID.
@@ -52,6 +54,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		gxidHandler := func(data []byte) {
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			dout.Flush()
 		}
 		if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
 			xlogRD.ReadByGxid(date, gxid, gxidHandler)
@@ -72,6 +75,16 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		etime := param.GetLong("etime")
 		max := param.GetInt("max")
 		rev := param.GetBoolean("reverse")
+		limitTime := param.GetInt("limit")
+
+		// elapsed lower bound: max(config, request param) — matches Java behavior
+		limit := int32(0)
+		if cfg := config.Get(); cfg != nil {
+			limit = int32(cfg.XLogPasttimeLowerBoundMs())
+		}
+		if int32(limitTime) > limit {
+			limit = int32(limitTime)
+		}
 
 		// Build objHash filter if present
 		objHashFilter := make(map[int32]bool)
@@ -89,20 +102,26 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			if max > 0 && cnt >= int(max) {
 				return false
 			}
-			if len(objHashFilter) > 0 {
-				innerDin := protocol.NewDataInputX(data)
-				xp, err := pack.ReadPack(innerDin)
-				if err != nil {
-					return true
-				}
-				if xlp, ok := xp.(*pack.XLogPack); ok {
-					if !objHashFilter[xlp.ObjHash] {
-						return true
-					}
-				}
+			innerDin := protocol.NewDataInputX(data)
+			xp, err := pack.ReadPack(innerDin)
+			if err != nil {
+				return true
+			}
+			xlp, ok := xp.(*pack.XLogPack)
+			if !ok {
+				return true
+			}
+			// objHash filter
+			if len(objHashFilter) > 0 && !objHashFilter[xlp.ObjHash] {
+				return true
+			}
+			// elapsed filter — skip fast transactions (matches Java's x.elapsed > limit)
+			if limit > 0 && xlp.Elapsed <= limit {
+				return true
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			dout.Flush()
 			cnt++
 			return true
 		}
@@ -213,6 +232,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			dout.Flush()
 		}
 	})
 
@@ -232,6 +252,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		gxidHandler := func(data []byte) {
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			dout.Flush()
 		}
 
 		if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
@@ -264,12 +285,14 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			if err == nil && data != nil {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				dout.Write(data)
+				dout.Flush()
 			}
 		}
 		if gxid != 0 {
 			gxidHandler := func(data []byte) {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				dout.Write(data)
+				dout.Flush()
 			}
 			if found, _ := xlogWR.ReadByGxid(date, gxid, gxidHandler); !found {
 				xlogRD.ReadByGxid(date, gxid, gxidHandler)
@@ -306,6 +329,7 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			dout.Flush()
 			return true
 		}
 
