@@ -2,6 +2,7 @@ package xlog
 
 import (
 	"encoding/binary"
+	gio "io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -47,29 +48,31 @@ func (x *XLogData) Write(data []byte) (int64, error) {
 }
 
 // Read reads an XLog entry from the given offset.
+// The file handle is lazily initialized and reused across calls.
 func (x *XLogData) Read(offset int64) ([]byte, error) {
-	// Open file for random read access
-	f, err := os.Open(x.path)
-	if err != nil {
+	x.readMu.Lock()
+	defer x.readMu.Unlock()
+
+	if x.raf == nil {
+		f, err := os.Open(x.path)
+		if err != nil {
+			return nil, err
+		}
+		x.raf = f
+	}
+
+	if _, err := x.raf.Seek(offset, 0); err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	// Seek to offset
-	if _, err := f.Seek(offset, 0); err != nil {
-		return nil, err
-	}
-
-	// Read 2-byte length
 	var lenBuf [2]byte
-	if _, err := f.Read(lenBuf[:]); err != nil {
+	if _, err := gio.ReadFull(x.raf, lenBuf[:]); err != nil {
 		return nil, err
 	}
 	length := binary.BigEndian.Uint16(lenBuf[:])
 
-	// Read body
 	body := make([]byte, length)
-	if _, err := f.Read(body); err != nil {
+	if _, err := gio.ReadFull(x.raf, body); err != nil {
 		return nil, err
 	}
 
@@ -81,8 +84,15 @@ func (x *XLogData) Flush() error {
 	return x.dataFile.Flush()
 }
 
-// Close closes the data file.
+// Close closes the data file and the read handle.
 func (x *XLogData) Close() {
+	x.readMu.Lock()
+	if x.raf != nil {
+		x.raf.Close()
+		x.raf = nil
+	}
+	x.readMu.Unlock()
+
 	if x.dataFile != nil {
 		x.dataFile.Close()
 	}

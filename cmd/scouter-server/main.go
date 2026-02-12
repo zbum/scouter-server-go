@@ -233,7 +233,6 @@ func main() {
 	purger := db.NewDayContainerPurger(cfg.DayContainerKeepHours(),
 		xlogWR, xlogRD,
 		counterWR, counterRD,
-		textWR, textRD,
 		profileWR, profileRD,
 		alertWR, alertRD,
 		summaryWR, summaryRD,

@@ -6,9 +6,10 @@ import (
 	"sync"
 )
 
+const textDirName = "00000000"
+
 // TextData represents a text record to be written.
 type TextData struct {
-	Date string
 	Div  string
 	Hash int32
 	Text string
@@ -16,17 +17,17 @@ type TextData struct {
 
 // dupKey uniquely identifies a text entry for deduplication.
 type dupKey struct {
-	Date string
 	Div  string
 	Hash int32
 }
 
 // TextWR provides async text writing with deduplication.
+// All text data is stored in a single "00000000" directory.
 type TextWR struct {
 	mu       sync.Mutex
 	baseDir  string
-	tables   map[string]*TextTable // date -> table
-	dupCheck map[dupKey]struct{}   // in-memory dedup cache
+	table    *TextTable
+	dupCheck map[dupKey]struct{} // in-memory dedup cache
 	queue    chan *TextData
 	closed   bool
 	wg       sync.WaitGroup
@@ -36,7 +37,6 @@ type TextWR struct {
 func NewTextWR(baseDir string) *TextWR {
 	return &TextWR{
 		baseDir:  baseDir,
-		tables:   make(map[string]*TextTable),
 		dupCheck: make(map[dupKey]struct{}),
 		queue:    make(chan *TextData, 10000),
 	}
@@ -62,11 +62,10 @@ func (w *TextWR) Start(ctx context.Context) {
 
 // Add enqueues a text record for async writing.
 // Non-blocking unless queue is full.
-func (w *TextWR) Add(date, div string, hash int32, text string) {
+func (w *TextWR) Add(div string, hash int32, text string) {
 	w.wg.Add(1)
 	select {
 	case w.queue <- &TextData{
-		Date: date,
 		Div:  div,
 		Hash: hash,
 		Text: text,
@@ -84,7 +83,6 @@ func (w *TextWR) process(data *TextData) {
 
 	// Check dedup cache
 	key := dupKey{
-		Date: data.Date,
 		Div:  data.Div,
 		Hash: data.Hash,
 	}
@@ -93,7 +91,7 @@ func (w *TextWR) process(data *TextData) {
 	}
 
 	// Get or create table
-	table, err := w.getTable(data.Date)
+	table, err := w.getTable()
 	if err != nil {
 		return
 	}
@@ -107,39 +105,20 @@ func (w *TextWR) process(data *TextData) {
 	w.dupCheck[key] = struct{}{}
 }
 
-// getTable returns a table for the given date, opening it if necessary.
-func (w *TextWR) getTable(date string) (*TextTable, error) {
-	if table, ok := w.tables[date]; ok {
-		return table, nil
+// getTable returns the single text table, opening it if necessary.
+func (w *TextWR) getTable() (*TextTable, error) {
+	if w.table != nil {
+		return w.table, nil
 	}
 
-	dir := filepath.Join(w.baseDir, date)
+	dir := filepath.Join(w.baseDir, textDirName)
 	table, err := NewTextTable(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	w.tables[date] = table
+	w.table = table
 	return table, nil
-}
-
-// PurgeOldDays closes day containers and clears dedup entries not in the keepDates set.
-func (w *TextWR) PurgeOldDays(keepDates map[string]bool) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	for date, table := range w.tables {
-		if keepDates[date] {
-			continue
-		}
-		table.Close()
-		delete(w.tables, date)
-	}
-	for key := range w.dupCheck {
-		if !keepDates[key.Date] {
-			delete(w.dupCheck, key)
-		}
-	}
 }
 
 // Flush waits for all pending writes to complete.
@@ -147,7 +126,7 @@ func (w *TextWR) Flush() {
 	w.wg.Wait()
 }
 
-// Close closes all open tables and stops accepting new writes.
+// Close closes the text table and stops accepting new writes.
 func (w *TextWR) Close() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -158,9 +137,9 @@ func (w *TextWR) Close() {
 	w.closed = true
 
 	close(w.queue)
-	for _, table := range w.tables {
-		table.Close()
+	if w.table != nil {
+		w.table.Close()
+		w.table = nil
 	}
-	w.tables = make(map[string]*TextTable)
 	w.dupCheck = make(map[dupKey]struct{})
 }

@@ -85,25 +85,26 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		}
 
 		cnt := 0
-		dataHandler := func(data []byte) {
+		dataHandler := func(data []byte) bool {
 			if max > 0 && cnt >= int(max) {
-				return
+				return false
 			}
 			if len(objHashFilter) > 0 {
 				innerDin := protocol.NewDataInputX(data)
 				xp, err := pack.ReadPack(innerDin)
 				if err != nil {
-					return
+					return true
 				}
 				if xlp, ok := xp.(*pack.XLogPack); ok {
 					if !objHashFilter[xlp.ObjHash] {
-						return
+						return true
 					}
 				}
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
 			cnt++
+			return true
 		}
 
 		// Try xlogWR first (current day has up-to-date in-memory index),
@@ -290,21 +291,22 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		date := util.FormatDate(stime)
 		date2 := util.FormatDate(etime)
 
-		searchHandler := func(data []byte) {
+		searchHandler := func(data []byte) bool {
 			if objHash != 0 {
 				innerDin := protocol.NewDataInputX(data)
 				xp, err := pack.ReadPack(innerDin)
 				if err != nil {
-					return
+					return true
 				}
 				if xlp, ok := xp.(*pack.XLogPack); ok {
 					if xlp.ObjHash != objHash {
-						return
+						return true
 					}
 				}
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
+			return true
 		}
 
 		readByTime := func(d string, s, e int64) {

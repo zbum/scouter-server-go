@@ -3,12 +3,10 @@ package core
 import (
 	"log/slog"
 	"net"
-	"time"
 
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/text"
 	"github.com/zbum/scouter-server-go/internal/protocol/pack"
-	"github.com/zbum/scouter-server-go/internal/util"
 )
 
 // TextCore processes incoming TextPack data, caching text hash→string mappings.
@@ -57,8 +55,7 @@ func (tc *TextCore) run() {
 	for tp := range tc.queue {
 		slog.Debug("TextCore processing", "type", tp.XType, "hash", tp.Hash, "text", tp.Text)
 		if tc.textWR != nil {
-			date := util.FormatDate(time.Now().UnixMilli())
-			tc.textWR.Add(date, tp.XType, tp.Hash, tp.Text)
+			tc.textWR.Add(tp.XType, tp.Hash, tp.Text)
 		}
 	}
 }

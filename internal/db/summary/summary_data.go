@@ -90,12 +90,13 @@ func (sd *SummaryData) ReadRange(stime, etime int64, handler func(timeMs int64, 
 
 	dataPath := filepath.Join(sd.dir, formatFileName(sd.stype)+".data")
 
-	return sd.index.Read(stime, etime, func(timeMs int64, dataPos []byte) {
+	return sd.index.Read(stime, etime, func(timeMs int64, dataPos []byte) bool {
 		offset := protocol.ToLong5(dataPos, 0)
 		raw, err := readEntryAt(dataPath, offset)
 		if err == nil && raw != nil {
 			handler(timeMs, raw)
 		}
+		return true
 	})
 }
 

@@ -60,23 +60,15 @@ func (f *IndexTimeFile) getSecAll(timeMs int64) ([]TimeToData, error) {
 	var items []TimeToData
 	pos := f.timeBlockHash.Get(timeMs)
 	for pos > 0 {
-		deleted, err := f.keyFile.IsDeleted(pos)
+		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
 			return nil, err
 		}
-		if !deleted {
-			r, err := f.keyFile.GetRecord(pos)
-			if err != nil {
-				return nil, err
-			}
+		if !r.Deleted {
 			t := protocol.ToLong(r.TimeKey, 0)
 			items = append(items, TimeToData{Time: t, DataPos: r.DataPos})
 		}
-		var err2 error
-		pos, err2 = f.keyFile.GetPrevPos(pos)
-		if err2 != nil {
-			return nil, err2
-		}
+		pos = r.PrevPos
 	}
 	// Sort by time ascending
 	sort.Slice(items, func(i, j int) bool {
@@ -86,16 +78,12 @@ func (f *IndexTimeFile) getSecAll(timeMs int64) ([]TimeToData, error) {
 }
 
 func (f *IndexTimeFile) GetDirect(pos int64) (*TimeToData, error) {
-	deleted, err := f.keyFile.IsDeleted(pos)
-	if err != nil {
-		return nil, err
-	}
-	if deleted {
-		return nil, nil
-	}
 	r, err := f.keyFile.GetRecord(pos)
 	if err != nil {
 		return nil, err
+	}
+	if r.Deleted {
+		return nil, nil
 	}
 	return &TimeToData{
 		Time:    protocol.ToLong(r.TimeKey, 0),
@@ -131,15 +119,22 @@ func (f *IndexTimeFile) Delete(timeMs int64) (int, error) {
 }
 
 // Read iterates forward through time buckets from stime to etime (500ms increments).
-func (f *IndexTimeFile) Read(stime int64, etime int64, handler func(time int64, dataPos []byte)) error {
+// Handler returns false to stop iteration early.
+func (f *IndexTimeFile) Read(stime int64, etime int64, handler func(time int64, dataPos []byte) bool) error {
 	t := stime
 	for i := 0; i < util.SecondsPerDay*2 && t <= etime; i++ {
+		if f.timeBlockHash.Get(t) == 0 {
+			t += 500
+			continue
+		}
 		items, err := f.getSecAll(t)
 		if err != nil {
 			return err
 		}
 		for _, item := range items {
-			handler(item.Time, item.DataPos)
+			if !handler(item.Time, item.DataPos) {
+				return nil
+			}
 		}
 		t += 500
 	}
@@ -147,16 +142,22 @@ func (f *IndexTimeFile) Read(stime int64, etime int64, handler func(time int64, 
 }
 
 // ReadFromEnd iterates backward through time buckets from etime to stime.
-func (f *IndexTimeFile) ReadFromEnd(stime int64, etime int64, handler func(time int64, dataPos []byte)) error {
+// Handler returns false to stop iteration early.
+func (f *IndexTimeFile) ReadFromEnd(stime int64, etime int64, handler func(time int64, dataPos []byte) bool) error {
 	t := etime
 	for i := 0; i < util.SecondsPerDay*2 && stime <= t; i++ {
+		if f.timeBlockHash.Get(t) == 0 {
+			t -= 500
+			continue
+		}
 		items, err := f.getSecAll(t)
 		if err != nil {
 			return err
 		}
-		// Iterate in reverse order
 		for j := len(items) - 1; j >= 0; j-- {
-			handler(items[j].Time, items[j].DataPos)
+			if !handler(items[j].Time, items[j].DataPos) {
+				return nil
+			}
 		}
 		t -= 500
 	}
@@ -164,10 +165,15 @@ func (f *IndexTimeFile) ReadFromEnd(stime int64, etime int64, handler func(time 
 }
 
 // ReadWithDataReader iterates forward, resolving data positions to actual data via reader.
+// Handler returns false to stop iteration early.
 func (f *IndexTimeFile) ReadWithDataReader(stime int64, etime int64,
-	handler func(time int64, data []byte), reader func(int64) []byte) error {
+	handler func(time int64, data []byte) bool, reader func(int64) []byte) error {
 	t := stime
 	for i := 0; i < util.SecondsPerDay*2 && t <= etime; i++ {
+		if f.timeBlockHash.Get(t) == 0 {
+			t += 500
+			continue
+		}
 		items, err := f.getSecAll(t)
 		if err != nil {
 			return err
@@ -175,7 +181,9 @@ func (f *IndexTimeFile) ReadWithDataReader(stime int64, etime int64,
 		for _, item := range items {
 			if item.Time >= stime && item.Time <= etime {
 				dataPos := protocol.ToLong5(item.DataPos, 0)
-				handler(item.Time, reader(dataPos))
+				if !handler(item.Time, reader(dataPos)) {
+					return nil
+				}
 			}
 		}
 		t += 500
@@ -184,10 +192,15 @@ func (f *IndexTimeFile) ReadWithDataReader(stime int64, etime int64,
 }
 
 // ReadFromEndWithDataReader iterates backward, resolving data positions via reader.
+// Handler returns false to stop iteration early.
 func (f *IndexTimeFile) ReadFromEndWithDataReader(stime int64, etime int64,
-	handler func(time int64, data []byte), reader func(int64) []byte) error {
+	handler func(time int64, data []byte) bool, reader func(int64) []byte) error {
 	t := etime
 	for i := 0; i < util.SecondsPerDay*2 && stime <= t; i++ {
+		if f.timeBlockHash.Get(t) == 0 {
+			t -= 500
+			continue
+		}
 		items, err := f.getSecAll(t)
 		if err != nil {
 			return err
@@ -196,7 +209,9 @@ func (f *IndexTimeFile) ReadFromEndWithDataReader(stime int64, etime int64,
 			item := items[j]
 			if item.Time >= stime && item.Time <= etime {
 				dataPos := protocol.ToLong5(item.DataPos, 0)
-				handler(item.Time, reader(dataPos))
+				if !handler(item.Time, reader(dataPos)) {
+					return nil
+				}
 			}
 		}
 		t -= 500

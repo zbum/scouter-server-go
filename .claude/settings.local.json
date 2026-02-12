@@ -46,7 +46,10 @@
       "Bash(tmux send-keys:*)",
       "Bash(tmux split-window:*)",
       "Bash(tmux list-windows:*)",
-      "Bash(tmux rename-window:*)"
+      "Bash(tmux rename-window:*)",
+      "Bash(direnv version:*)",
+      "Bash(direnv allow:*)",
+      "Bash(make test:*)"
     ]
   }
 }

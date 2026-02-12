@@ -2,7 +2,6 @@ package text
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -11,7 +10,7 @@ import (
 
 func TestTextTable_SetGet(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "20260207")
+	dir := filepath.Join(tmpDir, "00000000")
 
 	table, err := NewTextTable(dir)
 	if err != nil {
@@ -43,7 +42,7 @@ func TestTextTable_SetGet(t *testing.T) {
 
 func TestTextTable_MultipleTexts(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "20260207")
+	dir := filepath.Join(tmpDir, "00000000")
 
 	table, err := NewTextTable(dir)
 	if err != nil {
@@ -89,7 +88,7 @@ func TestTextTable_MultipleTexts(t *testing.T) {
 
 func TestTextTable_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "20260207")
+	dir := filepath.Join(tmpDir, "00000000")
 
 	table, err := NewTextTable(dir)
 	if err != nil {
@@ -121,7 +120,6 @@ func TestTextWR_AsyncWrite(t *testing.T) {
 	wr.Start(ctx)
 
 	// Add some texts
-	date := "20260207"
 	texts := []struct {
 		div  string
 		text string
@@ -133,15 +131,15 @@ func TestTextWR_AsyncWrite(t *testing.T) {
 
 	for _, tc := range texts {
 		hash := util.HashString(tc.text)
-		wr.Add(date, tc.div, hash, tc.text)
+		wr.Add(tc.div, hash, tc.text)
 	}
 
 	// Wait for async processing and close writer
 	wr.Flush()
 	wr.Close()
 
-	// Verify writes
-	dir := filepath.Join(tmpDir, date)
+	// Verify writes — all text stored in 00000000 directory
+	dir := filepath.Join(tmpDir, textDirName)
 	table, err := NewTextTable(dir)
 	if err != nil {
 		t.Fatalf("NewTextTable failed: %v", err)
@@ -174,20 +172,19 @@ func TestTextWR_Deduplication(t *testing.T) {
 	wr.Start(ctx)
 
 	// Add the same text twice
-	date := "20260207"
 	div := "service"
 	text := "UserService.login"
 	hash := util.HashString(text)
 
-	wr.Add(date, div, hash, text)
-	wr.Add(date, div, hash, text)
+	wr.Add(div, hash, text)
+	wr.Add(div, hash, text)
 
 	// Wait for async processing
 	wr.Flush()
 
 	// Check dedup cache before closing
 	wr.mu.Lock()
-	key := dupKey{Date: date, Div: div, Hash: hash}
+	key := dupKey{Div: div, Hash: hash}
 	_, exists := wr.dupCheck[key]
 	wr.mu.Unlock()
 
@@ -199,7 +196,7 @@ func TestTextWR_Deduplication(t *testing.T) {
 	wr.Close()
 
 	// Verify only one write occurred
-	dir := filepath.Join(tmpDir, date)
+	dir := filepath.Join(tmpDir, textDirName)
 	table, err := NewTextTable(dir)
 	if err != nil {
 		t.Fatalf("NewTextTable failed: %v", err)
@@ -228,12 +225,11 @@ func TestTextRD_Read(t *testing.T) {
 
 	wr.Start(ctx)
 
-	date := "20260207"
 	div := "service"
 	text := "UserService.login"
 	hash := util.HashString(text)
 
-	wr.Add(date, div, hash, text)
+	wr.Add(div, hash, text)
 	wr.Flush()
 	wr.Close()
 
@@ -241,7 +237,7 @@ func TestTextRD_Read(t *testing.T) {
 	rd := NewTextRD(tmpDir)
 	defer rd.Close()
 
-	retrieved, err := rd.GetString(date, div, hash)
+	retrieved, err := rd.GetString(div, hash)
 	if err != nil {
 		t.Fatalf("GetString failed: %v", err)
 	}
@@ -260,12 +256,11 @@ func TestTextRD_Cache(t *testing.T) {
 
 	wr.Start(ctx)
 
-	date := "20260207"
 	div := "service"
 	text := "UserService.login"
 	hash := util.HashString(text)
 
-	wr.Add(date, div, hash, text)
+	wr.Add(div, hash, text)
 	wr.Flush()
 	wr.Close()
 
@@ -274,7 +269,7 @@ func TestTextRD_Cache(t *testing.T) {
 	defer rd.Close()
 
 	// First read (from table)
-	retrieved1, err := rd.GetString(date, div, hash)
+	retrieved1, err := rd.GetString(div, hash)
 	if err != nil {
 		t.Fatalf("GetString failed: %v", err)
 	}
@@ -283,7 +278,7 @@ func TestTextRD_Cache(t *testing.T) {
 	}
 
 	// Second read (from cache)
-	retrieved2, err := rd.GetString(date, div, hash)
+	retrieved2, err := rd.GetString(div, hash)
 	if err != nil {
 		t.Fatalf("GetString failed: %v", err)
 	}
@@ -293,7 +288,7 @@ func TestTextRD_Cache(t *testing.T) {
 
 	// Verify cache hit
 	rd.mu.Lock()
-	key := cacheKey{Date: date, Div: div, Hash: hash}
+	key := cacheKey{Div: div, Hash: hash}
 	cached, inCache := rd.cache[key]
 	rd.mu.Unlock()
 
@@ -312,7 +307,7 @@ func TestTextRD_NotFound(t *testing.T) {
 	defer rd.Close()
 
 	// Try to read non-existent text
-	retrieved, err := rd.GetString("20260207", "service", 12345)
+	retrieved, err := rd.GetString("service", 12345)
 	if err != nil {
 		t.Fatalf("GetString failed: %v", err)
 	}
@@ -321,60 +316,9 @@ func TestTextRD_NotFound(t *testing.T) {
 	}
 }
 
-func TestMultipleDates(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	wr := NewTextWR(tmpDir)
-	defer wr.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	wr.Start(ctx)
-
-	// Write to different dates
-	dates := []string{"20260207", "20260208", "20260209"}
-	div := "service"
-	text := "UserService.login"
-	hash := util.HashString(text)
-
-	for _, date := range dates {
-		wr.Add(date, div, hash, text)
-	}
-
-	wr.Flush()
-	wr.Close()
-
-	// Verify each date has its own directory and data
-	for _, date := range dates {
-		dir := filepath.Join(tmpDir, date)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			t.Errorf("Expected directory %s to exist", dir)
-		}
-
-		table, err := NewTextTable(dir)
-		if err != nil {
-			t.Fatalf("NewTextTable failed for %s: %v", date, err)
-		}
-
-		retrieved, found, err := table.Get(div, hash)
-		table.Close()
-
-		if err != nil {
-			t.Fatalf("Get failed for %s: %v", date, err)
-		}
-		if !found {
-			t.Fatalf("Text not found for date %s", date)
-		}
-		if retrieved != text {
-			t.Errorf("Expected %q, got %q for date %s", text, retrieved, date)
-		}
-	}
-}
-
 func TestTextTable_UnicodeText(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "20260207")
+	dir := filepath.Join(tmpDir, "00000000")
 
 	table, err := NewTextTable(dir)
 	if err != nil {

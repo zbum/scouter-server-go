@@ -90,7 +90,7 @@ func (g *XLogGroupUtil) makeGroupHash(service int32) int32 {
 		g.mu.Unlock()
 
 		if !searched {
-			diskTxt, err := g.textRD.SearchAllDates("service", service)
+			diskTxt, err := g.textRD.GetString("service", service)
 			if err == nil && diskTxt != "" {
 				url = diskTxt
 				found = true

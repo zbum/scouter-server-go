@@ -509,8 +509,9 @@ func TestIndexTimeFilePutAndRead(t *testing.T) {
 	}
 
 	var results []TimeToData
-	idx.Read(baseTime, baseTime+500, func(time int64, dataPos []byte) {
+	idx.Read(baseTime, baseTime+500, func(time int64, dataPos []byte) bool {
 		results = append(results, TimeToData{Time: time, DataPos: dataPos})
+		return true
 	})
 	if len(results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(results))
@@ -532,8 +533,9 @@ func TestIndexTimeFileReadFromEnd(t *testing.T) {
 	idx.Put(baseTime+100, protocol.ToBytes5(200))
 
 	var results []int64
-	idx.ReadFromEnd(baseTime, baseTime+500, func(time int64, dataPos []byte) {
+	idx.ReadFromEnd(baseTime, baseTime+500, func(time int64, dataPos []byte) bool {
 		results = append(results, time)
+		return true
 	})
 	if len(results) != 2 {
 		t.Errorf("expected 2 results, got %d", len(results))
@@ -567,8 +569,9 @@ func TestIndexTimeFileDelete(t *testing.T) {
 
 	// Should now read 0 items for that time
 	var count int
-	idx.Read(timeMs, timeMs+500, func(time int64, dataPos []byte) {
+	idx.Read(timeMs, timeMs+500, func(time int64, dataPos []byte) bool {
 		count++
+		return true
 	})
 	if count != 0 {
 		t.Errorf("expected 0 after delete, got %d", count)
@@ -593,8 +596,9 @@ func TestIndexTimeFileMultipleBuckets(t *testing.T) {
 	}
 
 	var count int
-	idx.Read(baseTime, baseTime+2500, func(time int64, dataPos []byte) {
+	idx.Read(baseTime, baseTime+2500, func(time int64, dataPos []byte) bool {
 		count++
+		return true
 	})
 	if count != 5 {
 		t.Errorf("expected 5, got %d", count)

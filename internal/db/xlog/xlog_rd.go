@@ -60,7 +60,8 @@ func (r *XLogRD) getContainer(date string) (*dayContainer, error) {
 }
 
 // ReadByTime reads XLog entries within a time range and calls the handler for each.
-func (r *XLogRD) ReadByTime(date string, stime, etime int64, handler func(data []byte)) error {
+// Handler returns false to stop iteration early.
+func (r *XLogRD) ReadByTime(date string, stime, etime int64, handler func(data []byte) bool) error {
 	container, err := r.getContainer(date)
 	if err != nil {
 		return err
@@ -69,12 +70,13 @@ func (r *XLogRD) ReadByTime(date string, stime, etime int64, handler func(data [
 		return nil // No data for this date
 	}
 
-	return container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) {
+	return container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) bool {
 		offset := protocol.ToLong5(dataPos, 0)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
-			handler(data)
+			return handler(data)
 		}
+		return true
 	})
 }
 
@@ -125,7 +127,8 @@ func (r *XLogRD) ReadByGxid(date string, gxid int64, handler func(data []byte)) 
 }
 
 // ReadFromEndTime reads XLog entries within a time range in reverse order.
-func (r *XLogRD) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte)) error {
+// Handler returns false to stop iteration early.
+func (r *XLogRD) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte) bool) error {
 	container, err := r.getContainer(date)
 	if err != nil {
 		return err
@@ -134,12 +137,13 @@ func (r *XLogRD) ReadFromEndTime(date string, stime, etime int64, handler func(d
 		return nil
 	}
 
-	return container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) {
+	return container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) bool {
 		offset := protocol.ToLong5(dataPos, 0)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
-			handler(data)
+			return handler(data)
 		}
+		return true
 	})
 }
 

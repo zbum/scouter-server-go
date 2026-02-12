@@ -4,51 +4,76 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/zbum/scouter-server-go/internal/db/io"
-	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-// TextTable provides per-day text storage using IndexKeyFile.
-// Key format: 8 bytes = hash(div):4 + hash(text):4
+// TextTable provides text storage using per-div IndexKeyFiles.
+// Each div (e.g. "service", "sql", "method") gets its own file: text_{div}.
+// Key format: 4 bytes = hash (big-endian int32)
 // Value: UTF-8 text bytes
 type TextTable struct {
-	path  string
-	index *io.IndexKeyFile
+	mu      sync.Mutex
+	path    string
+	indexes map[string]*io.IndexKeyFile // div -> IndexKeyFile
 }
 
 // NewTextTable opens or creates a text table at the specified directory.
-// The IndexKeyFile is created at dir/text with 1MB hash size.
 func NewTextTable(dir string) (*TextTable, error) {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 
-	indexPath := filepath.Join(dir, "text")
-	index, err := io.NewIndexKeyFile(indexPath, 1)
+	return &TextTable{
+		path:    dir,
+		indexes: make(map[string]*io.IndexKeyFile),
+	}, nil
+}
+
+// getIndex returns the IndexKeyFile for the given div, creating it if necessary.
+func (t *TextTable) getIndex(div string) (*io.IndexKeyFile, error) {
+	if idx, ok := t.indexes[div]; ok {
+		return idx, nil
+	}
+
+	indexPath := filepath.Join(t.path, "text_"+div)
+	idx, err := io.NewIndexKeyFile(indexPath, 1)
 	if err != nil {
 		return nil, err
 	}
 
-	return &TextTable{
-		path:  dir,
-		index: index,
-	}, nil
+	t.indexes[div] = idx
+	return idx, nil
 }
 
 // Set stores a text string with the given div and hash.
-// The composite key is built from hash(div) + hash.
 func (t *TextTable) Set(div string, hash int32, text string) error {
-	key := makeCompositeKey(div, hash)
-	value := []byte(text)
-	return t.index.Put(key, value)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	idx, err := t.getIndex(div)
+	if err != nil {
+		return err
+	}
+
+	key := makeHashKey(hash)
+	return idx.Put(key, []byte(text))
 }
 
 // Get retrieves a text string by div and hash.
 // Returns (text, found, error).
 func (t *TextTable) Get(div string, hash int32) (string, bool, error) {
-	key := makeCompositeKey(div, hash)
-	value, err := t.index.Get(key)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	idx, err := t.getIndex(div)
+	if err != nil {
+		return "", false, err
+	}
+
+	key := makeHashKey(hash)
+	value, err := idx.Get(key)
 	if err != nil {
 		return "", false, err
 	}
@@ -58,18 +83,20 @@ func (t *TextTable) Get(div string, hash int32) (string, bool, error) {
 	return string(value), true, nil
 }
 
-// Close closes the underlying IndexKeyFile.
+// Close closes all underlying IndexKeyFiles.
 func (t *TextTable) Close() {
-	if t.index != nil {
-		t.index.Close()
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	for _, idx := range t.indexes {
+		idx.Close()
 	}
+	t.indexes = make(map[string]*io.IndexKeyFile)
 }
 
-// makeCompositeKey builds an 8-byte key from hash(div) + hash.
-func makeCompositeKey(div string, hash int32) []byte {
-	key := make([]byte, 8)
-	divHash := util.HashString(div)
-	binary.BigEndian.PutUint32(key[0:4], uint32(divHash))
-	binary.BigEndian.PutUint32(key[4:8], uint32(hash))
+// makeHashKey builds a 4-byte big-endian key from hash.
+func makeHashKey(hash int32) []byte {
+	key := make([]byte, 4)
+	binary.BigEndian.PutUint32(key, uint32(hash))
 	return key
 }

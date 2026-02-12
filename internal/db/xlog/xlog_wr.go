@@ -177,7 +177,8 @@ func (w *XLogWR) process(entry *XLogEntry) {
 // ReadByTime reads XLog entries from the writer's in-memory containers.
 // This returns the most up-to-date data since the writer holds the authoritative
 // in-memory index. Returns false if the writer has no container for the date.
-func (w *XLogWR) ReadByTime(date string, stime, etime int64, handler func(data []byte)) (bool, error) {
+// Handler returns false to stop iteration early.
+func (w *XLogWR) ReadByTime(date string, stime, etime int64, handler func(data []byte) bool) (bool, error) {
 	w.mu.Lock()
 	container, exists := w.days[date]
 	w.mu.Unlock()
@@ -185,19 +186,21 @@ func (w *XLogWR) ReadByTime(date string, stime, etime int64, handler func(data [
 		return false, nil
 	}
 
-	err := container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) {
+	err := container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) bool {
 		offset := protocol.ToLong5(dataPos, 0)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
-			handler(data)
+			return handler(data)
 		}
+		return true
 	})
 	return true, err
 }
 
 // ReadFromEndTime reads XLog entries from the writer's in-memory containers
 // in reverse time order. Returns false if the writer has no container for the date.
-func (w *XLogWR) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte)) (bool, error) {
+// Handler returns false to stop iteration early.
+func (w *XLogWR) ReadFromEndTime(date string, stime, etime int64, handler func(data []byte) bool) (bool, error) {
 	w.mu.Lock()
 	container, exists := w.days[date]
 	w.mu.Unlock()
@@ -205,12 +208,13 @@ func (w *XLogWR) ReadFromEndTime(date string, stime, etime int64, handler func(d
 		return false, nil
 	}
 
-	err := container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) {
+	err := container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) bool {
 		offset := protocol.ToLong5(dataPos, 0)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
-			handler(data)
+			return handler(data)
 		}
+		return true
 	})
 	return true, err
 }

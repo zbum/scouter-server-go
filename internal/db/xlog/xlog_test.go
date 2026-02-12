@@ -210,9 +210,10 @@ func TestXLogWRAsync(t *testing.T) {
 
 	// Test read by time range
 	var readCount int
-	err := reader.ReadByTime(date, now-1000, now+3000, func(data []byte) {
+	err := reader.ReadByTime(date, now-1000, now+3000, func(data []byte) bool {
 		readCount++
 		t.Logf("Read data: %s", string(data))
+		return true
 	})
 	if err != nil {
 		t.Fatalf("ReadByTime failed: %v", err)
@@ -377,8 +378,9 @@ func TestXLogWRBatchProcessing(t *testing.T) {
 
 	// Verify time range read returns all entries
 	var count int
-	err := reader.ReadByTime(date, now-1, now+int64(n)+1, func(data []byte) {
+	err := reader.ReadByTime(date, now-1, now+int64(n)+1, func(data []byte) bool {
 		count++
+		return true
 	})
 	if err != nil {
 		t.Fatalf("ReadByTime failed: %v", err)
@@ -440,8 +442,9 @@ func TestXLogReaderNonExistentDate(t *testing.T) {
 	defer reader.Close()
 
 	// Try to read from a non-existent date
-	err := reader.ReadByTime("20991231", 0, 1000000, func(data []byte) {
+	err := reader.ReadByTime("20991231", 0, 1000000, func(data []byte) bool {
 		t.Error("Should not receive any data for non-existent date")
+		return true
 	})
 	if err != nil {
 		t.Errorf("ReadByTime for non-existent date should not error: %v", err)

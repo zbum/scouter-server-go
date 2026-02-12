@@ -2,7 +2,6 @@ package service
 
 import (
 	"log/slog"
-	"time"
 
 	"github.com/zbum/scouter-server-go/internal/core/cache"
 	"github.com/zbum/scouter-server-go/internal/db/text"
@@ -12,19 +11,15 @@ import (
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-// resolveText looks up text by hash: memory cache → same-date disk → all-dates disk.
-func resolveText(textCache *cache.TextCache, textRD *text.TextRD, date, typeName string, h int32) (string, bool) {
+// resolveText looks up text by hash: memory cache → disk.
+func resolveText(textCache *cache.TextCache, textRD *text.TextRD, typeName string, h int32) (string, bool) {
 	if txt, found := textCache.Get(typeName, h); found {
 		return txt, true
 	}
 	if textRD == nil {
 		return "", false
 	}
-	if diskTxt, err := textRD.GetString(date, typeName, h); err == nil && diskTxt != "" {
-		textCache.Put(typeName, h, diskTxt)
-		return diskTxt, true
-	}
-	if diskTxt, err := textRD.SearchAllDates(typeName, h); err == nil && diskTxt != "" {
+	if diskTxt, err := textRD.GetString(typeName, h); err == nil && diskTxt != "" {
 		textCache.Put(typeName, h, diskTxt)
 		return diskTxt, true
 	}
@@ -41,10 +36,6 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 		}
 		param := pk.(*pack.MapPack)
 
-		date := param.GetText("date")
-		if date == "" {
-			date = util.FormatDate(time.Now().UnixMilli())
-		}
 		typeName := param.GetText("type")
 		hashVal := param.Get("hash")
 		if hashVal == nil {
@@ -64,7 +55,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, date, typeName, h)
+			txt, found := resolveText(textCache, textRD, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)
@@ -91,10 +82,6 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 		}
 		param := pk.(*pack.MapPack)
 
-		date := param.GetText("date")
-		if date == "" {
-			date = util.FormatDate(time.Now().UnixMilli())
-		}
 		typeName := param.GetText("type")
 		hashVal := param.Get("hash")
 		if hashVal == nil {
@@ -112,7 +99,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, date, typeName, h)
+			txt, found := resolveText(textCache, textRD, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -132,10 +119,6 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 		}
 		param := pk.(*pack.MapPack)
 
-		date := param.GetText("date")
-		if date == "" {
-			date = util.FormatDate(time.Now().UnixMilli())
-		}
 		typeVal := param.Get("type")
 		hashVal := param.Get("hash")
 		if typeVal == nil || hashVal == nil {
@@ -163,7 +146,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			typeName := tv.Value
 
-			txt, found := resolveText(textCache, textRD, date, typeName, h)
+			txt, found := resolveText(textCache, textRD, typeName, h)
 			if found {
 				dout.WriteByte(protocol.FLAG_HAS_NEXT)
 				pack.WritePack(dout, &pack.TextPack{
@@ -183,10 +166,6 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 		}
 		param := pk.(*pack.MapPack)
 
-		date := param.GetText("date")
-		if date == "" {
-			date = util.FormatDate(time.Now().UnixMilli())
-		}
 		typeName := param.GetText("type")
 		hashVal := param.Get("hash")
 		if hashVal == nil {
@@ -205,7 +184,7 @@ func RegisterTextHandlers(r *Registry, textCache *cache.TextCache, textRD *text.
 			}
 			h := int32(dv.Value)
 
-			txt, found := resolveText(textCache, textRD, date, typeName, h)
+			txt, found := resolveText(textCache, textRD, typeName, h)
 			if found {
 				key := util.Hexa32ToString32(h)
 				result.PutStr(key, txt)

@@ -25,6 +25,9 @@ go.work.sum
 *.swo
 *~
 
+# direnv
+.envrc
+
 # OS
 .DS_Store
 Thumbs.db
