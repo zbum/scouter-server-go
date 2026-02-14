@@ -6,15 +6,15 @@ type TextArray struct {
 	Value []string
 }
 
-func (v *TextArray) GetValueType() byte {
+func (v *TextArray) ValueType() byte {
 	return TYPE_ARRAY_TEXT
 }
 
 func (v *TextArray) Write(o *protocol.DataOutputX) {
 	if v.Value == nil {
-		o.WriteShort(0)
+		o.WriteInt16(0)
 	} else {
-		o.WriteShort(len(v.Value))
+		o.WriteInt16(int16(len(v.Value)))
 		for _, text := range v.Value {
 			o.WriteText(text)
 		}
@@ -22,7 +22,7 @@ func (v *TextArray) Write(o *protocol.DataOutputX) {
 }
 
 func (v *TextArray) Read(d *protocol.DataInputX) error {
-	length, err := d.ReadShort()
+	length, err := d.ReadInt16()
 	if err != nil {
 		return err
 	}

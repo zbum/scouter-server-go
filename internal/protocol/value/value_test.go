@@ -26,8 +26,8 @@ func TestNullValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error: %v", err)
 	}
-	if v.GetValueType() != TYPE_NULL {
-		t.Errorf("expected NULL type, got %d", v.GetValueType())
+	if v.ValueType() != TYPE_NULL {
+		t.Errorf("expected NULL type, got %d", v.ValueType())
 	}
 }
 
@@ -326,8 +326,8 @@ func TestAllValueTypes(t *testing.T) {
 			t.Errorf("CreateValue(%d) error: %v", tc, err)
 			continue
 		}
-		if v.GetValueType() != tc {
-			t.Errorf("type mismatch: expected %d, got %d", tc, v.GetValueType())
+		if v.ValueType() != tc {
+			t.Errorf("type mismatch: expected %d, got %d", tc, v.ValueType())
 		}
 	}
 }

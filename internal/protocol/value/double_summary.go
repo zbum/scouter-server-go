@@ -9,37 +9,37 @@ type DoubleSummary struct {
 	Max   float64
 }
 
-func (v *DoubleSummary) GetValueType() byte {
+func (v *DoubleSummary) ValueType() byte {
 	return TYPE_DOUBLE_SUMMARY
 }
 
 func (v *DoubleSummary) Write(o *protocol.DataOutputX) {
-	o.WriteDouble(v.Sum)
-	o.WriteInt(v.Count)
-	o.WriteDouble(v.Min)
-	o.WriteDouble(v.Max)
+	o.WriteFloat64(v.Sum)
+	o.WriteInt32(v.Count)
+	o.WriteFloat64(v.Min)
+	o.WriteFloat64(v.Max)
 }
 
 func (v *DoubleSummary) Read(d *protocol.DataInputX) error {
-	sum, err := d.ReadDouble()
+	sum, err := d.ReadFloat64()
 	if err != nil {
 		return err
 	}
 	v.Sum = sum
 
-	count, err := d.ReadInt()
+	count, err := d.ReadInt32()
 	if err != nil {
 		return err
 	}
 	v.Count = count
 
-	min, err := d.ReadDouble()
+	min, err := d.ReadFloat64()
 	if err != nil {
 		return err
 	}
 	v.Min = min
 
-	max, err := d.ReadDouble()
+	max, err := d.ReadFloat64()
 	if err != nil {
 		return err
 	}

@@ -47,6 +47,16 @@ func (x *XLogData) Write(data []byte) (int64, error) {
 	return x.dataFile.Write(buf)
 }
 
+// bodyPool reuses read buffers for compressed data to reduce GC pressure.
+// When compression is enabled, the read buffer is temporary (Decode produces
+// a new decompressed buffer), so the read buffer can be recycled.
+var bodyPool = sync.Pool{
+	New: func() any {
+		b := make([]byte, 0, 512)
+		return b
+	},
+}
+
 // Read reads an XLog entry from the given offset.
 // Uses ReadAt (pread) for lock-free concurrent reads — multiple goroutines
 // can read simultaneously without mutex serialization.
@@ -68,15 +78,35 @@ func (x *XLogData) Read(offset int64) ([]byte, error) {
 	if _, err := x.raf.ReadAt(lenBuf[:], offset); err != nil {
 		return nil, err
 	}
-	length := binary.BigEndian.Uint16(lenBuf[:])
+	length := int(binary.BigEndian.Uint16(lenBuf[:]))
+
+	// Get read buffer from pool
+	body := bodyPool.Get().([]byte)
+	if cap(body) >= length {
+		body = body[:length]
+	} else {
+		body = make([]byte, length)
+	}
 
 	// Read body via pread
-	body := make([]byte, length)
 	if _, err := x.raf.ReadAt(body, offset+2); err != nil {
+		bodyPool.Put(body[:0])
 		return nil, err
 	}
 
-	return compress.SharedPool().Decode(body)
+	decoded, err := compress.SharedPool().Decode(body)
+	if err != nil {
+		bodyPool.Put(body[:0])
+		return nil, err
+	}
+
+	// Recycle the read buffer only if Decode produced a new buffer (compressed case).
+	// When uncompressed, decoded IS body — must not return it to the pool.
+	if len(decoded) > 0 && len(body) > 0 && &decoded[0] != &body[0] {
+		bodyPool.Put(body[:0])
+	}
+
+	return decoded, nil
 }
 
 // Flush flushes buffered data to disk.

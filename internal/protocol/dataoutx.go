@@ -88,10 +88,6 @@ func (o *DataOutputX) WriteInt16(v int16) *DataOutputX {
 	return o.Write(b)
 }
 
-func (o *DataOutputX) WriteShort(v int) *DataOutputX {
-	return o.WriteInt16(int16(v))
-}
-
 func (o *DataOutputX) WriteUint16(v uint16) *DataOutputX {
 	b := make([]byte, 2)
 	binary.BigEndian.PutUint16(b, v)
@@ -104,51 +100,29 @@ func (o *DataOutputX) WriteInt32(v int32) *DataOutputX {
 	return o.Write(b)
 }
 
-func (o *DataOutputX) WriteInt(v int32) *DataOutputX {
-	return o.WriteInt32(v)
-}
-
 func (o *DataOutputX) WriteInt64(v int64) *DataOutputX {
 	b := make([]byte, 8)
 	binary.BigEndian.PutUint64(b, uint64(v))
 	return o.Write(b)
 }
 
-func (o *DataOutputX) WriteLong(v int64) *DataOutputX {
-	return o.WriteInt64(v)
-}
-
 func (o *DataOutputX) WriteFloat32(v float32) *DataOutputX {
 	return o.WriteInt32(int32(math.Float32bits(v)))
-}
-
-func (o *DataOutputX) WriteFloat(v float32) *DataOutputX {
-	return o.WriteFloat32(v)
 }
 
 func (o *DataOutputX) WriteFloat64(v float64) *DataOutputX {
 	return o.WriteInt64(int64(math.Float64bits(v)))
 }
 
-func (o *DataOutputX) WriteDouble(v float64) *DataOutputX {
-	return o.WriteFloat64(v)
-}
-
 func (o *DataOutputX) WriteInt3(v int32) *DataOutputX {
 	b := make([]byte, 3)
-	b[0] = byte((v >> 16) & 0xFF)
-	b[1] = byte((v >> 8) & 0xFF)
-	b[2] = byte(v & 0xFF)
+	BigEndian.PutInt3(b, v)
 	return o.Write(b)
 }
 
 func (o *DataOutputX) WriteLong5(v int64) *DataOutputX {
 	b := make([]byte, 5)
-	b[0] = byte(v >> 32)
-	b[1] = byte(v >> 24)
-	b[2] = byte(v >> 16)
-	b[3] = byte(v >> 8)
-	b[4] = byte(v)
+	BigEndian.PutInt5(b, v)
 	return o.Write(b)
 }
 
@@ -178,7 +152,7 @@ func (o *DataOutputX) WriteDecimal(v int64) *DataOutputX {
 }
 
 func (o *DataOutputX) WriteBlob(value []byte) *DataOutputX {
-	if value == nil || len(value) == 0 {
+	if len(value) == 0 {
 		o.WriteByte(0)
 	} else {
 		length := len(value)
@@ -221,9 +195,9 @@ func (o *DataOutputX) WriteShortBytes(b []byte) *DataOutputX {
 
 func (o *DataOutputX) WriteArrayInt(v []int32) *DataOutputX {
 	if v == nil {
-		o.WriteShort(0)
+		o.WriteInt16(0)
 	} else {
-		o.WriteShort(len(v))
+		o.WriteInt16(int16(len(v)))
 		for _, val := range v {
 			o.WriteInt32(val)
 		}
@@ -233,9 +207,9 @@ func (o *DataOutputX) WriteArrayInt(v []int32) *DataOutputX {
 
 func (o *DataOutputX) WriteArrayLong(v []int64) *DataOutputX {
 	if v == nil {
-		o.WriteShort(0)
+		o.WriteInt16(0)
 	} else {
-		o.WriteShort(len(v))
+		o.WriteInt16(int16(len(v)))
 		for _, val := range v {
 			o.WriteInt64(val)
 		}
@@ -245,9 +219,9 @@ func (o *DataOutputX) WriteArrayLong(v []int64) *DataOutputX {
 
 func (o *DataOutputX) WriteArrayFloat(v []float32) *DataOutputX {
 	if v == nil {
-		o.WriteShort(0)
+		o.WriteInt16(0)
 	} else {
-		o.WriteShort(len(v))
+		o.WriteInt16(int16(len(v)))
 		for _, val := range v {
 			o.WriteFloat32(val)
 		}
@@ -267,35 +241,6 @@ func (o *DataOutputX) WriteDecimalArray(v []int64) *DataOutputX {
 	return o
 }
 
-// ToBytes5 converts an int64 value to a 5-byte big-endian byte array.
-func ToBytes5(v int64) []byte {
-	b := make([]byte, 5)
-	b[0] = byte(v >> 32)
-	b[1] = byte(v >> 24)
-	b[2] = byte(v >> 16)
-	b[3] = byte(v >> 8)
-	b[4] = byte(v)
-	return b
-}
-
-// ToBytesInt converts an int32 value to a 4-byte big-endian byte array.
-func ToBytesInt(v int32) []byte {
-	b := make([]byte, 4)
-	binary.BigEndian.PutUint32(b, uint32(v))
-	return b
-}
-
-// ToBytesLong converts an int64 value to an 8-byte big-endian byte array.
-func ToBytesLong(v int64) []byte {
-	b := make([]byte, 8)
-	binary.BigEndian.PutUint64(b, uint64(v))
-	return b
-}
-
-// SetBytes copies data into buf starting at position pos.
-func SetBytes(buf []byte, pos int, data []byte) {
-	copy(buf[pos:], data)
-}
 
 func (o *DataOutputX) WriteDecimalIntArray(v []int32) *DataOutputX {
 	if v == nil {

@@ -11,8 +11,8 @@ type StackPack struct {
 	Data    []byte
 }
 
-// GetPackType returns the pack type code.
-func (p *StackPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *StackPack) PackType() byte {
 	return PackTypeStack
 }
 

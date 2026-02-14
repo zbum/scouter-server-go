@@ -10,7 +10,7 @@ func NewTextValue(val string) *TextValue {
 	return &TextValue{Value: val}
 }
 
-func (v *TextValue) GetValueType() byte {
+func (v *TextValue) ValueType() byte {
 	return TYPE_TEXT
 }
 

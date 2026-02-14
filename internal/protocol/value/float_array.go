@@ -6,7 +6,7 @@ type FloatArray struct {
 	Value []float32
 }
 
-func (v *FloatArray) GetValueType() byte {
+func (v *FloatArray) ValueType() byte {
 	return TYPE_ARRAY_FLOAT
 }
 

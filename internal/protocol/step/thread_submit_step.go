@@ -12,13 +12,13 @@ type ThreadSubmitStep struct {
 	Error   int32
 }
 
-func (s *ThreadSubmitStep) GetStepType() byte {
+func (s *ThreadSubmitStep) StepType() byte {
 	return THREAD_SUBMIT
 }
 
 func (s *ThreadSubmitStep) Write(o *protocol.DataOutputX) {
 	s.StepSingle.Write(o)
-	o.WriteLong(s.Txid)
+	o.WriteInt64(s.Txid)
 	o.WriteDecimal(int64(s.Hash))
 	o.WriteDecimal(int64(s.Elapsed))
 	o.WriteDecimal(int64(s.CpuTime))
@@ -30,7 +30,7 @@ func (s *ThreadSubmitStep) Read(d *protocol.DataInputX) error {
 		return err
 	}
 
-	txid, err := d.ReadLong()
+	txid, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

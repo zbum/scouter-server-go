@@ -24,13 +24,13 @@ func (s *CommonSpanStep) Write(o *protocol.DataOutputX) {
 	s.StepSingle.Write(o)
 	o.WriteDecimal(int64(s.LocalEndpointServiceName))
 	o.WriteBlob(s.LocalEndpointIp)
-	o.WriteShort(int(s.LocalEndpointPort))
+	o.WriteInt16(s.LocalEndpointPort)
 	o.WriteDecimal(int64(s.RemoteEndpointServiceName))
 	o.WriteBlob(s.RemoteEndpointIp)
-	o.WriteShort(int(s.RemoteEndpointPort))
+	o.WriteInt16(s.RemoteEndpointPort)
 	o.WriteBoolean(s.Debug)
 	o.WriteBoolean(s.Shared)
-	o.WriteLong(s.Timestamp)
+	o.WriteInt64(s.Timestamp)
 	o.WriteDecimal(int64(s.Elapsed))
 	o.WriteDecimal(int64(s.Error))
 	o.WriteDecimalArray(s.AnnotationTimestamps)
@@ -54,7 +54,7 @@ func (s *CommonSpanStep) Read(d *protocol.DataInputX) error {
 	}
 	s.LocalEndpointIp = localEndpointIp
 
-	localEndpointPort, err := d.ReadShort()
+	localEndpointPort, err := d.ReadInt16()
 	if err != nil {
 		return err
 	}
@@ -72,7 +72,7 @@ func (s *CommonSpanStep) Read(d *protocol.DataInputX) error {
 	}
 	s.RemoteEndpointIp = remoteEndpointIp
 
-	remoteEndpointPort, err := d.ReadShort()
+	remoteEndpointPort, err := d.ReadInt16()
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (s *CommonSpanStep) Read(d *protocol.DataInputX) error {
 	}
 	s.Shared = shared
 
-	timestamp, err := d.ReadLong()
+	timestamp, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ type SpanStep struct {
 	CommonSpanStep
 }
 
-func (s *SpanStep) GetStepType() byte {
+func (s *SpanStep) StepType() byte {
 	return SPAN
 }
 
@@ -149,13 +149,13 @@ type SpanCallStep struct {
 	Async   byte
 }
 
-func (s *SpanCallStep) GetStepType() byte {
+func (s *SpanCallStep) StepType() byte {
 	return SPANCALL
 }
 
 func (s *SpanCallStep) Write(o *protocol.DataOutputX) {
 	s.CommonSpanStep.Write(o)
-	o.WriteLong(s.Txid)
+	o.WriteInt64(s.Txid)
 	o.WriteByte(s.Opt)
 	if s.Opt == 1 {
 		o.WriteText(s.Address)
@@ -168,7 +168,7 @@ func (s *SpanCallStep) Read(d *protocol.DataInputX) error {
 		return err
 	}
 
-	txid, err := d.ReadLong()
+	txid, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

@@ -94,7 +94,7 @@ func doLogin(t *testing.T, din *protocol.DataInputX, dout *protocol.DataOutputX)
 	param.PutStr("pass", "")
 
 	dout.WriteText(protocol.LOGIN)
-	dout.WriteLong(0)
+	dout.WriteInt64(0)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -136,7 +136,7 @@ func TestTCP_ServerVersion(t *testing.T) {
 	// SERVER_VERSION is a free command (no login needed)
 	param := &pack.MapPack{}
 	dout.WriteText(protocol.SERVER_VERSION)
-	dout.WriteLong(0)
+	dout.WriteInt64(0)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -175,7 +175,7 @@ func TestTCP_ServerTime(t *testing.T) {
 	before := time.Now().UnixMilli()
 
 	dout.WriteText(protocol.SERVER_TIME)
-	dout.WriteLong(0)
+	dout.WriteInt64(0)
 	dout.Flush()
 
 	flag, _ := din.ReadByte()
@@ -216,7 +216,7 @@ func TestTCP_InvalidSession(t *testing.T) {
 
 	// Try a non-free command without logging in
 	dout.WriteText(protocol.OBJECT_LIST_REAL_TIME)
-	dout.WriteLong(12345) // invalid session
+	dout.WriteInt64(12345) // invalid session
 	dout.Flush()
 
 	flag, _ := din.ReadByte()
@@ -239,7 +239,7 @@ func TestTCP_ObjectListRealTime(t *testing.T) {
 	session := doLogin(t, din, dout)
 
 	dout.WriteText(protocol.OBJECT_LIST_REAL_TIME)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	dout.Flush()
 
 	// Read objects
@@ -283,7 +283,7 @@ func TestTCP_CounterRealTime(t *testing.T) {
 	param.PutStr("counter", "TPS")
 
 	dout.WriteText(protocol.COUNTER_REAL_TIME)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -323,7 +323,7 @@ func TestTCP_CounterRealTimeAll(t *testing.T) {
 	param.PutStr("objType", "java")
 
 	dout.WriteText(protocol.COUNTER_REAL_TIME_ALL)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -369,7 +369,7 @@ func TestTCP_GetText100(t *testing.T) {
 	param.Put("hash", hashList)
 
 	dout.WriteText(protocol.GET_TEXT_100)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -414,7 +414,7 @@ func TestTCP_TransRealTimeGroup(t *testing.T) {
 	param.PutLong("limit", 100)
 
 	dout.WriteText(protocol.TRANX_REAL_TIME_GROUP)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	pack.WritePack(dout, param)
 	dout.Flush()
 
@@ -466,7 +466,7 @@ func TestTCP_MultipleCommands(t *testing.T) {
 
 	// Command 1: SERVER_VERSION
 	dout.WriteText(protocol.SERVER_VERSION)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	(&pack.MapPack{}).Write(dout)
 	dout.Flush()
 
@@ -479,7 +479,7 @@ func TestTCP_MultipleCommands(t *testing.T) {
 
 	// Command 2: OBJECT_LIST_REAL_TIME
 	dout.WriteText(protocol.OBJECT_LIST_REAL_TIME)
-	dout.WriteLong(session)
+	dout.WriteInt64(session)
 	dout.Flush()
 
 	count := 0

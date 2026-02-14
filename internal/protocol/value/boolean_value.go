@@ -6,7 +6,7 @@ type BooleanValue struct {
 	Value bool
 }
 
-func (v *BooleanValue) GetValueType() byte {
+func (v *BooleanValue) ValueType() byte {
 	return TYPE_BOOLEAN
 }
 

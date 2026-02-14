@@ -205,7 +205,7 @@ func (s *Server) handleClient(ctx context.Context, reader io.Reader, writer *buf
 		}
 
 		// Read session
-		session, err := din.ReadLong()
+		session, err := din.ReadInt64()
 		if err != nil {
 			slog.Debug("TCP client read session error", "addr", remoteAddr, "error", err)
 			return

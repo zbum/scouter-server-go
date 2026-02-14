@@ -9,7 +9,7 @@ type StepControl struct {
 	Message string
 }
 
-func (s *StepControl) GetStepType() byte {
+func (s *StepControl) StepType() byte {
 	return CONTROL
 }
 

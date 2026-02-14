@@ -79,7 +79,7 @@ func (sd *SummaryData) Write(timeMs int64, summaryBytes []byte) error {
 	}
 
 	// Index by time: store 5-byte encoded offset
-	_, err = sd.index.Put(timeMs, protocol.ToBytes5(offset))
+	_, err = sd.index.Put(timeMs, protocol.BigEndian.Bytes5(offset))
 	return err
 }
 
@@ -91,7 +91,7 @@ func (sd *SummaryData) ReadRange(stime, etime int64, handler func(timeMs int64, 
 	dataPath := filepath.Join(sd.dir, formatFileName(sd.stype)+".data")
 
 	return sd.index.Read(stime, etime, func(timeMs int64, dataPos []byte) bool {
-		offset := protocol.ToLong5(dataPos, 0)
+		offset := protocol.BigEndian.Int5(dataPos)
 		raw, err := readEntryAt(dataPath, offset)
 		if err == nil && raw != nil {
 			handler(timeMs, raw)

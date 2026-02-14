@@ -35,7 +35,7 @@ const (
 
 // Step interface for all step types
 type Step interface {
-	GetStepType() byte
+	StepType() byte
 	Write(o *protocol.DataOutputX)
 	Read(d *protocol.DataInputX) error
 }
@@ -96,7 +96,7 @@ func CreateStep(typeCode byte) (Step, error) {
 
 // WriteStep writes a step with its type code
 func WriteStep(o *protocol.DataOutputX, s Step) {
-	o.WriteByte(s.GetStepType())
+	o.WriteByte(s.StepType())
 	s.Write(o)
 }
 

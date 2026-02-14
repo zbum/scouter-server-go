@@ -8,13 +8,13 @@ type ApiCallStep2 struct {
 	Async byte
 }
 
-func (s *ApiCallStep2) GetStepType() byte {
+func (s *ApiCallStep2) StepType() byte {
 	return APICALL2
 }
 
 func (s *ApiCallStep2) Write(o *protocol.DataOutputX) {
 	s.ApiCallStep.StepSingle.Write(o)
-	o.WriteLong(s.Txid)
+	o.WriteInt64(s.Txid)
 	o.WriteDecimal(int64(s.Hash))
 	o.WriteDecimal(int64(s.Elapsed))
 	o.WriteDecimal(int64(s.CpuTime))
@@ -31,7 +31,7 @@ func (s *ApiCallStep2) Read(d *protocol.DataInputX) error {
 		return err
 	}
 
-	txid, err := d.ReadLong()
+	txid, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

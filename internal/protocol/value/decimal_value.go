@@ -10,7 +10,7 @@ func NewDecimalValue(val int64) *DecimalValue {
 	return &DecimalValue{Value: val}
 }
 
-func (v *DecimalValue) GetValueType() byte {
+func (v *DecimalValue) ValueType() byte {
 	return TYPE_DECIMAL
 }
 

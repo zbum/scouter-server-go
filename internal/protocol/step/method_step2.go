@@ -8,7 +8,7 @@ type MethodStep2 struct {
 	Error int32
 }
 
-func (s *MethodStep2) GetStepType() byte {
+func (s *MethodStep2) StepType() byte {
 	return METHOD2
 }
 

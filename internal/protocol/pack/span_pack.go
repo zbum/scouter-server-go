@@ -29,17 +29,17 @@ type SpanPack struct {
 	Tags                       *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *SpanPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *SpanPack) PackType() byte {
 	return PackTypeSpan
 }
 
 // Write serializes the SpanPack to the output stream.
 func (p *SpanPack) Write(o *protocol.DataOutputX) {
-	o.WriteLong(p.Gxid)
-	o.WriteLong(p.Txid)
-	o.WriteLong(p.Caller)
-	o.WriteLong(p.Timestamp)
+	o.WriteInt64(p.Gxid)
+	o.WriteInt64(p.Txid)
+	o.WriteInt64(p.Caller)
+	o.WriteInt64(p.Timestamp)
 	o.WriteDecimal(int64(p.Elapsed))
 	o.WriteByte(p.SpanType)
 	o.WriteDecimal(int64(p.Name))
@@ -47,10 +47,10 @@ func (p *SpanPack) Write(o *protocol.DataOutputX) {
 	o.WriteDecimal(int64(p.Error))
 	o.WriteDecimal(int64(p.LocalEndpointServiceName))
 	o.WriteBlob(p.LocalEndpointIp)
-	o.WriteShort(int(p.LocalEndpointPort))
+	o.WriteInt16(p.LocalEndpointPort)
 	o.WriteDecimal(int64(p.RemoteEndpointServiceName))
 	o.WriteBlob(p.RemoteEndpointIp)
-	o.WriteShort(int(p.RemoteEndpointPort))
+	o.WriteInt16(p.RemoteEndpointPort)
 	o.WriteBoolean(p.Debug)
 	o.WriteBoolean(p.Shared)
 	value.WriteValue(o, p.AnnotationTimestamps)
@@ -61,16 +61,16 @@ func (p *SpanPack) Write(o *protocol.DataOutputX) {
 // Read deserializes the SpanPack from the input stream.
 func (p *SpanPack) Read(d *protocol.DataInputX) error {
 	var err error
-	if p.Gxid, err = d.ReadLong(); err != nil {
+	if p.Gxid, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Txid, err = d.ReadLong(); err != nil {
+	if p.Txid, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Caller, err = d.ReadLong(); err != nil {
+	if p.Caller, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Timestamp, err = d.ReadLong(); err != nil {
+	if p.Timestamp, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if val, err := d.ReadDecimal(); err != nil {
@@ -104,7 +104,7 @@ func (p *SpanPack) Read(d *protocol.DataInputX) error {
 	if p.LocalEndpointIp, err = d.ReadBlob(); err != nil {
 		return err
 	}
-	if p.LocalEndpointPort, err = d.ReadShort(); err != nil {
+	if p.LocalEndpointPort, err = d.ReadInt16(); err != nil {
 		return err
 	}
 	if val, err := d.ReadDecimal(); err != nil {
@@ -115,7 +115,7 @@ func (p *SpanPack) Read(d *protocol.DataInputX) error {
 	if p.RemoteEndpointIp, err = d.ReadBlob(); err != nil {
 		return err
 	}
-	if p.RemoteEndpointPort, err = d.ReadShort(); err != nil {
+	if p.RemoteEndpointPort, err = d.ReadInt16(); err != nil {
 		return err
 	}
 	if p.Debug, err = d.ReadBoolean(); err != nil {

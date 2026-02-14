@@ -6,7 +6,7 @@ type BlobValue struct {
 	Value []byte
 }
 
-func (v *BlobValue) GetValueType() byte {
+func (v *BlobValue) ValueType() byte {
 	return TYPE_BLOB
 }
 

@@ -33,7 +33,7 @@ func (d *Dispatcher) Dispatch(p pack.Pack, addr *net.UDPAddr) {
 		return
 	}
 
-	packType := p.GetPackType()
+	packType := p.PackType()
 
 	// Per-type debug logging controlled by config flags
 	if cfg := config.Get(); cfg != nil {

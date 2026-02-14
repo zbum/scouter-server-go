@@ -11,7 +11,7 @@ type SocketStep struct {
 	Error   int32
 }
 
-func (s *SocketStep) GetStepType() byte {
+func (s *SocketStep) StepType() byte {
 	return SOCKET
 }
 

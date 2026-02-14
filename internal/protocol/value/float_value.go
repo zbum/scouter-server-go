@@ -6,16 +6,16 @@ type FloatValue struct {
 	Value float32
 }
 
-func (v *FloatValue) GetValueType() byte {
+func (v *FloatValue) ValueType() byte {
 	return TYPE_FLOAT
 }
 
 func (v *FloatValue) Write(o *protocol.DataOutputX) {
-	o.WriteFloat(v.Value)
+	o.WriteFloat32(v.Value)
 }
 
 func (v *FloatValue) Read(d *protocol.DataInputX) error {
-	val, err := d.ReadFloat()
+	val, err := d.ReadFloat32()
 	if err != nil {
 		return err
 	}

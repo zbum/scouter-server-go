@@ -16,17 +16,17 @@ type AlertPack struct {
 	Tags    *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *AlertPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *AlertPack) PackType() byte {
 	return PackTypeAlert
 }
 
 // Write serializes the AlertPack to the output stream.
 func (p *AlertPack) Write(o *protocol.DataOutputX) {
-	o.WriteLong(p.Time)
+	o.WriteInt64(p.Time)
 	o.WriteByte(p.Level)
 	o.WriteText(p.ObjType)
-	o.WriteInt(p.ObjHash)
+	o.WriteInt32(p.ObjHash)
 	o.WriteText(p.Title)
 	o.WriteText(p.Message)
 	// Java initializes tags = new MapValue(), so always write a MapValue (never NullValue).
@@ -40,7 +40,7 @@ func (p *AlertPack) Write(o *protocol.DataOutputX) {
 // Read deserializes the AlertPack from the input stream.
 func (p *AlertPack) Read(d *protocol.DataInputX) error {
 	var err error
-	if p.Time, err = d.ReadLong(); err != nil {
+	if p.Time, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if p.Level, err = d.ReadByte(); err != nil {
@@ -49,7 +49,7 @@ func (p *AlertPack) Read(d *protocol.DataInputX) error {
 	if p.ObjType, err = d.ReadText(); err != nil {
 		return err
 	}
-	if p.ObjHash, err = d.ReadInt(); err != nil {
+	if p.ObjHash, err = d.ReadInt32(); err != nil {
 		return err
 	}
 	if p.Title, err = d.ReadText(); err != nil {

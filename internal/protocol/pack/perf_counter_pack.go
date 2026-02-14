@@ -13,14 +13,14 @@ type PerfCounterPack struct {
 	Data     *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *PerfCounterPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *PerfCounterPack) PackType() byte {
 	return PackTypePerfCounter
 }
 
 // Write serializes the PerfCounterPack to the output stream.
 func (p *PerfCounterPack) Write(o *protocol.DataOutputX) {
-	o.WriteLong(p.Time)
+	o.WriteInt64(p.Time)
 	o.WriteText(p.ObjName)
 	o.WriteByte(p.TimeType)
 	value.WriteValue(o, p.Data)
@@ -29,7 +29,7 @@ func (p *PerfCounterPack) Write(o *protocol.DataOutputX) {
 // Read deserializes the PerfCounterPack from the input stream.
 func (p *PerfCounterPack) Read(d *protocol.DataInputX) error {
 	var err error
-	if p.Time, err = d.ReadLong(); err != nil {
+	if p.Time, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if p.ObjName, err = d.ReadText(); err != nil {

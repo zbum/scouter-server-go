@@ -4,7 +4,7 @@ import "github.com/zbum/scouter-server-go/internal/protocol"
 
 type NullValue struct{}
 
-func (v *NullValue) GetValueType() byte {
+func (v *NullValue) ValueType() byte {
 	return TYPE_NULL
 }
 

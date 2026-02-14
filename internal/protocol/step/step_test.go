@@ -208,8 +208,8 @@ func TestAllStepTypes(t *testing.T) {
 			t.Errorf("CreateStep(%d) error: %v", tc, err)
 			continue
 		}
-		if s.GetStepType() != tc {
-			t.Errorf("type mismatch: expected %d, got %d", tc, s.GetStepType())
+		if s.StepType() != tc {
+			t.Errorf("type mismatch: expected %d, got %d", tc, s.StepType())
 		}
 	}
 }
@@ -238,8 +238,8 @@ func TestAllStepRoundTrip(t *testing.T) {
 			t.Errorf("ReadStep(%d) error: %v", tc, err)
 			continue
 		}
-		if result.GetStepType() != tc {
-			t.Errorf("type %d: round-trip type mismatch, got %d", tc, result.GetStepType())
+		if result.StepType() != tc {
+			t.Errorf("type %d: round-trip type mismatch, got %d", tc, result.StepType())
 		}
 	}
 }

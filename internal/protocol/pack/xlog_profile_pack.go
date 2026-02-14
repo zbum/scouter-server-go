@@ -13,8 +13,8 @@ type XLogProfilePack struct {
 	Profile []byte
 }
 
-// GetPackType returns the pack type code.
-func (p *XLogProfilePack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *XLogProfilePack) PackType() byte {
 	return PackTypeXLogProfile
 }
 
@@ -23,7 +23,7 @@ func (p *XLogProfilePack) Write(o *protocol.DataOutputX) {
 	o.WriteDecimal(p.Time)
 	o.WriteDecimal(int64(p.ObjHash))
 	o.WriteDecimal(int64(p.Service))
-	o.WriteLong(p.Txid)
+	o.WriteInt64(p.Txid)
 	o.WriteBlob(p.Profile)
 }
 
@@ -43,7 +43,7 @@ func (p *XLogProfilePack) Read(d *protocol.DataInputX) error {
 	} else {
 		p.Service = int32(val)
 	}
-	if p.Txid, err = d.ReadLong(); err != nil {
+	if p.Txid, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if p.Profile, err = d.ReadBlob(); err != nil {

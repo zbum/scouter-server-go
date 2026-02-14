@@ -9,37 +9,37 @@ type LongSummary struct {
 	Max   int64
 }
 
-func (v *LongSummary) GetValueType() byte {
+func (v *LongSummary) ValueType() byte {
 	return TYPE_LONG_SUMMARY
 }
 
 func (v *LongSummary) Write(o *protocol.DataOutputX) {
-	o.WriteLong(v.Sum)
-	o.WriteInt(v.Count)
-	o.WriteLong(v.Min)
-	o.WriteLong(v.Max)
+	o.WriteInt64(v.Sum)
+	o.WriteInt32(v.Count)
+	o.WriteInt64(v.Min)
+	o.WriteInt64(v.Max)
 }
 
 func (v *LongSummary) Read(d *protocol.DataInputX) error {
-	sum, err := d.ReadLong()
+	sum, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}
 	v.Sum = sum
 
-	count, err := d.ReadInt()
+	count, err := d.ReadInt32()
 	if err != nil {
 		return err
 	}
 	v.Count = count
 
-	min, err := d.ReadLong()
+	min, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}
 	v.Min = min
 
-	max, err := d.ReadLong()
+	max, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

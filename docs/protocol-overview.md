@@ -245,7 +245,7 @@ func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
 
 ```go
 type Pack interface {
-    GetPackType() byte
+    PackType() byte
     Write(o *DataOutputX)
     Read(d *DataInputX) error
 }

@@ -13,8 +13,8 @@ type XLogProfilePack2 struct {
 	IgnoreGlobalConsequentSampling bool
 }
 
-// GetPackType returns the pack type code.
-func (p *XLogProfilePack2) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *XLogProfilePack2) PackType() byte {
 	return PackTypeXLogProfile2
 }
 
@@ -24,7 +24,7 @@ func (p *XLogProfilePack2) Write(o *protocol.DataOutputX) {
 	p.XLogProfilePack.Write(o)
 
 	// Write additional fields
-	o.WriteLong(p.Gxid)
+	o.WriteInt64(p.Gxid)
 	o.WriteByte(p.XType)
 	o.WriteByte(p.DiscardType)
 	o.WriteBoolean(p.IgnoreGlobalConsequentSampling)
@@ -39,7 +39,7 @@ func (p *XLogProfilePack2) Read(d *protocol.DataInputX) error {
 
 	// Read additional fields
 	var err error
-	if p.Gxid, err = d.ReadLong(); err != nil {
+	if p.Gxid, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if p.XType, err = d.ReadByte(); err != nil {

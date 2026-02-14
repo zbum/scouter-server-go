@@ -17,8 +17,8 @@ type ObjectPack struct {
 	Tags    *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *ObjectPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *ObjectPack) PackType() byte {
 	return PackTypeObject
 }
 

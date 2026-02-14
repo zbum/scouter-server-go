@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrEOF           = errors.New("unexpected end of data")
-	ErrUnknownType   = errors.New("unknown type code")
+	ErrEOF         = errors.New("unexpected end of data")
+	ErrUnknownType = errors.New("unknown type code")
 )
 
 type DataInputX struct {
@@ -79,14 +79,6 @@ func (d *DataInputX) ReadByte() (byte, error) {
 	return v, nil
 }
 
-func (d *DataInputX) ReadUnsignedByte() (int, error) {
-	b, err := d.ReadByte()
-	if err != nil {
-		return 0, err
-	}
-	return int(b) & 0xFF, nil
-}
-
 func (d *DataInputX) ReadBoolean() (bool, error) {
 	b, err := d.ReadByte()
 	if err != nil {
@@ -111,22 +103,18 @@ func (d *DataInputX) ReadInt16() (int16, error) {
 	return v, nil
 }
 
-func (d *DataInputX) ReadShort() (int16, error) {
-	return d.ReadInt16()
-}
-
-func (d *DataInputX) ReadUnsignedShort() (int, error) {
+func (d *DataInputX) ReadUint16() (uint16, error) {
 	if d.reader != nil {
 		b, err := d.Read(2)
 		if err != nil {
 			return 0, err
 		}
-		return int(binary.BigEndian.Uint16(b)), nil
+		return binary.BigEndian.Uint16(b), nil
 	}
 	if d.offset+2 > len(d.buf) {
 		return 0, ErrEOF
 	}
-	v := int(binary.BigEndian.Uint16(d.buf[d.offset:]))
+	v := binary.BigEndian.Uint16(d.buf[d.offset:])
 	d.offset += 2
 	return v, nil
 }
@@ -147,10 +135,6 @@ func (d *DataInputX) ReadInt32() (int32, error) {
 	return v, nil
 }
 
-func (d *DataInputX) ReadInt() (int32, error) {
-	return d.ReadInt32()
-}
-
 func (d *DataInputX) ReadInt64() (int64, error) {
 	if d.reader != nil {
 		b, err := d.Read(8)
@@ -167,20 +151,12 @@ func (d *DataInputX) ReadInt64() (int64, error) {
 	return v, nil
 }
 
-func (d *DataInputX) ReadLong() (int64, error) {
-	return d.ReadInt64()
-}
-
 func (d *DataInputX) ReadFloat32() (float32, error) {
 	v, err := d.ReadInt32()
 	if err != nil {
 		return 0, err
 	}
 	return math.Float32frombits(uint32(v)), nil
-}
-
-func (d *DataInputX) ReadFloat() (float32, error) {
-	return d.ReadFloat32()
 }
 
 func (d *DataInputX) ReadFloat64() (float64, error) {
@@ -191,16 +167,12 @@ func (d *DataInputX) ReadFloat64() (float64, error) {
 	return math.Float64frombits(uint64(v)), nil
 }
 
-func (d *DataInputX) ReadDouble() (float64, error) {
-	return d.ReadFloat64()
-}
-
 func (d *DataInputX) ReadInt3() (int32, error) {
 	b, err := d.Read(3)
 	if err != nil {
 		return 0, err
 	}
-	return ToInt3(b, 0), nil
+	return BigEndian.Int3(b), nil
 }
 
 func (d *DataInputX) ReadLong5() (int64, error) {
@@ -208,7 +180,7 @@ func (d *DataInputX) ReadLong5() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return ToLong5(b, 0), nil
+	return BigEndian.Int5(b), nil
 }
 
 func (d *DataInputX) ReadDecimal() (int64, error) {
@@ -251,19 +223,19 @@ func (d *DataInputX) ReadDecimal() (int64, error) {
 }
 
 func (d *DataInputX) ReadBlob() ([]byte, error) {
-	baseLen, err := d.ReadUnsignedByte()
+	b, err := d.ReadByte()
 	if err != nil {
 		return nil, err
 	}
-	switch baseLen {
+	switch b {
 	case 0:
 		return []byte{}, nil
 	case 255:
-		length, err := d.ReadUnsignedShort()
+		length, err := d.ReadUint16()
 		if err != nil {
 			return nil, err
 		}
-		return d.Read(length)
+		return d.Read(int(length))
 	case 254:
 		length, err := d.ReadInt32()
 		if err != nil {
@@ -271,7 +243,7 @@ func (d *DataInputX) ReadBlob() ([]byte, error) {
 		}
 		return d.Read(int(length))
 	default:
-		return d.Read(baseLen)
+		return d.Read(int(b))
 	}
 }
 
@@ -292,15 +264,15 @@ func (d *DataInputX) ReadIntBytes() ([]byte, error) {
 }
 
 func (d *DataInputX) ReadShortBytes() ([]byte, error) {
-	length, err := d.ReadUnsignedShort()
+	length, err := d.ReadUint16()
 	if err != nil {
 		return nil, err
 	}
-	return d.Read(length)
+	return d.Read(int(length))
 }
 
 func (d *DataInputX) ReadArrayInt() ([]int32, error) {
-	length, err := d.ReadShort()
+	length, err := d.ReadInt16()
 	if err != nil {
 		return nil, err
 	}
@@ -316,7 +288,7 @@ func (d *DataInputX) ReadArrayInt() ([]int32, error) {
 }
 
 func (d *DataInputX) ReadArrayLong() ([]int64, error) {
-	length, err := d.ReadShort()
+	length, err := d.ReadInt16()
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +304,7 @@ func (d *DataInputX) ReadArrayLong() ([]int64, error) {
 }
 
 func (d *DataInputX) ReadArrayFloat() ([]float32, error) {
-	length, err := d.ReadShort()
+	length, err := d.ReadInt16()
 	if err != nil {
 		return nil, err
 	}
@@ -389,32 +361,4 @@ func (d *DataInputX) SkipBytes(n int) error {
 	}
 	d.offset += n
 	return nil
-}
-
-// ToInt3 converts 3 bytes at position pos to a signed int32.
-// Uses sign extension: ((ch1<<24 + ch2<<16 + ch3<<8) >> 8) in Java.
-func ToInt3(buf []byte, pos int) int32 {
-	ch1 := int32(buf[pos]) & 0xFF
-	ch2 := int32(buf[pos+1]) & 0xFF
-	ch3 := int32(buf[pos+2]) & 0xFF
-	return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8)) >> 8
-}
-
-// ToLong5 converts 5 bytes at position pos to a signed int64.
-func ToLong5(buf []byte, pos int) int64 {
-	return (int64(int8(buf[pos])) << 32) |
-		(int64(buf[pos+1]&0xFF) << 24) |
-		(int64(buf[pos+2]&0xFF) << 16) |
-		(int64(buf[pos+3]&0xFF) << 8) |
-		int64(buf[pos+4]&0xFF)
-}
-
-// ToInt converts 4 bytes at position pos to a signed int32 (big-endian).
-func ToInt(buf []byte, pos int) int32 {
-	return int32(binary.BigEndian.Uint32(buf[pos:]))
-}
-
-// ToLong converts 8 bytes at position pos to a signed int64 (big-endian).
-func ToLong(buf []byte, pos int) int64 {
-	return int64(binary.BigEndian.Uint64(buf[pos:]))
 }

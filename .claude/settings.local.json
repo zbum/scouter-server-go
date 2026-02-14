@@ -53,7 +53,10 @@
       "Bash(./dist/scouter-server:*)",
       "Bash(gtimeout:*)",
       "Bash(cat:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(wc:*)",
+      "Bash(gopls check:*)",
+      "Bash(/Users/nhn/IdeaProjects/scouter.server.go/dist/scouter-server:*)"
     ]
   }
 }

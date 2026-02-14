@@ -307,8 +307,8 @@ func (am *AccountManager) GetGroupPolicy(group string) *value.MapValue {
 	return am.groupPolicyMap[group]
 }
 
-// GetAllGroupPolicies returns a copy of all group policies.
-func (am *AccountManager) GetAllGroupPolicies() map[string]*value.MapValue {
+// AllGroupPolicies returns a copy of all group policies.
+func (am *AccountManager) AllGroupPolicies() map[string]*value.MapValue {
 	am.mu.RLock()
 	defer am.mu.RUnlock()
 	m := make(map[string]*value.MapValue, len(am.groupPolicyMap))

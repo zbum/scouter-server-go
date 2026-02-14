@@ -14,13 +14,13 @@ type DispatchStep struct {
 	Address string
 }
 
-func (s *DispatchStep) GetStepType() byte {
+func (s *DispatchStep) StepType() byte {
 	return DISPATCH
 }
 
 func (s *DispatchStep) Write(o *protocol.DataOutputX) {
 	s.StepSingle.Write(o)
-	o.WriteLong(s.Txid)
+	o.WriteInt64(s.Txid)
 	o.WriteDecimal(int64(s.Hash))
 	o.WriteDecimal(int64(s.Elapsed))
 	o.WriteDecimal(int64(s.CpuTime))
@@ -36,7 +36,7 @@ func (s *DispatchStep) Read(d *protocol.DataInputX) error {
 		return err
 	}
 
-	txid, err := d.ReadLong()
+	txid, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

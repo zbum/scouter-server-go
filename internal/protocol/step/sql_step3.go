@@ -8,7 +8,7 @@ type SqlStep3 struct {
 	Updated int32
 }
 
-func (s *SqlStep3) GetStepType() byte {
+func (s *SqlStep3) StepType() byte {
 	return SQL3
 }
 

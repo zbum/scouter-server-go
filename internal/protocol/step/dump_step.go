@@ -14,17 +14,17 @@ type DumpStep struct {
 	LockOwnerName string
 }
 
-func (s *DumpStep) GetStepType() byte {
+func (s *DumpStep) StepType() byte {
 	return DUMP
 }
 
 func (s *DumpStep) Write(o *protocol.DataOutputX) {
 	s.StepSingle.Write(o)
 	o.WriteDecimalIntArray(s.Stacks)
-	o.WriteLong(s.ThreadId)
+	o.WriteInt64(s.ThreadId)
 	o.WriteText(s.ThreadName)
 	o.WriteText(s.ThreadState)
-	o.WriteLong(s.LockOwnerId)
+	o.WriteInt64(s.LockOwnerId)
 	o.WriteText(s.LockName)
 	o.WriteText(s.LockOwnerName)
 }
@@ -40,7 +40,7 @@ func (s *DumpStep) Read(d *protocol.DataInputX) error {
 	}
 	s.Stacks = stacks
 
-	threadId, err := d.ReadLong()
+	threadId, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func (s *DumpStep) Read(d *protocol.DataInputX) error {
 	}
 	s.ThreadState = threadState
 
-	lockOwnerId, err := d.ReadLong()
+	lockOwnerId, err := d.ReadInt64()
 	if err != nil {
 		return err
 	}

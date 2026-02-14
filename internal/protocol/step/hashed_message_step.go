@@ -10,7 +10,7 @@ type HashedMessageStep struct {
 	Value int32
 }
 
-func (s *HashedMessageStep) GetStepType() byte {
+func (s *HashedMessageStep) StepType() byte {
 	return HASHED_MESSAGE
 }
 

@@ -10,24 +10,24 @@ type DroppedXLogPack struct {
 	Txid int64
 }
 
-// GetPackType returns the pack type code.
-func (p *DroppedXLogPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *DroppedXLogPack) PackType() byte {
 	return PackTypeDroppedXLog
 }
 
 // Write serializes the DroppedXLogPack to the output stream.
 func (p *DroppedXLogPack) Write(o *protocol.DataOutputX) {
-	o.WriteLong(p.Gxid)
-	o.WriteLong(p.Txid)
+	o.WriteInt64(p.Gxid)
+	o.WriteInt64(p.Txid)
 }
 
 // Read deserializes the DroppedXLogPack from the input stream.
 func (p *DroppedXLogPack) Read(d *protocol.DataInputX) error {
 	var err error
-	if p.Gxid, err = d.ReadLong(); err != nil {
+	if p.Gxid, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Txid, err = d.ReadLong(); err != nil {
+	if p.Txid, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	return nil

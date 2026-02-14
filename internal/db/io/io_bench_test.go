@@ -139,8 +139,8 @@ func BenchmarkRealKeyFile_Append(b *testing.B) {
 	}
 	defer kf.Close()
 
-	key := protocol.ToBytesLong(12345)
-	val := protocol.ToBytes5(99999)
+	key := protocol.BigEndian.Bytes8(12345)
+	val := protocol.BigEndian.Bytes5(99999)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -162,8 +162,8 @@ func BenchmarkRealKeyFile_GetRecord_Sequential(b *testing.B) {
 	n := 100000
 	positions := make([]int64, n)
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesLong(int64(i))
-		val := protocol.ToBytes5(int64(i * 10))
+		key := protocol.BigEndian.Bytes8(int64(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 10))
 		pos, err := kf.Append(0, key, val)
 		if err != nil {
 			b.Fatal(err)
@@ -191,8 +191,8 @@ func BenchmarkRealKeyFile_GetRecord_Random(b *testing.B) {
 	n := 100000
 	positions := make([]int64, n)
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesLong(int64(i))
-		val := protocol.ToBytes5(int64(i * 10))
+		key := protocol.BigEndian.Bytes8(int64(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 10))
 		pos, err := kf.Append(0, key, val)
 		if err != nil {
 			b.Fatal(err)
@@ -226,8 +226,8 @@ func BenchmarkRealKeyFile_GetRecord_Concurrent(b *testing.B) {
 	n := 100000
 	positions := make([]int64, n)
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesLong(int64(i))
-		val := protocol.ToBytes5(int64(i * 10))
+		key := protocol.BigEndian.Bytes8(int64(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 10))
 		pos, err := kf.Append(0, key, val)
 		if err != nil {
 			b.Fatal(err)
@@ -259,8 +259,8 @@ func BenchmarkRealKeyFile_AppendAndRead_Mixed(b *testing.B) {
 	positions := make([]int64, 0, 10000)
 	// Seed with some data
 	for i := 0; i < 1000; i++ {
-		key := protocol.ToBytesLong(int64(i))
-		val := protocol.ToBytes5(int64(i))
+		key := protocol.BigEndian.Bytes8(int64(i))
+		val := protocol.BigEndian.Bytes5(int64(i))
 		pos, _ := kf.Append(0, key, val)
 		positions = append(positions, pos)
 	}
@@ -270,8 +270,8 @@ func BenchmarkRealKeyFile_AppendAndRead_Mixed(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		if i%10 == 0 {
 			// 10% writes
-			key := protocol.ToBytesLong(int64(i))
-			val := protocol.ToBytes5(int64(i))
+			key := protocol.BigEndian.Bytes8(int64(i))
+			val := protocol.BigEndian.Bytes5(int64(i))
 			pos, err := kf.Append(0, key, val)
 			if err != nil {
 				b.Fatal(err)
@@ -301,8 +301,8 @@ func BenchmarkIndexKeyFile_Put(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i * 100))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 100))
 		if err := idx.Put(key, val); err != nil {
 			b.Fatal(err)
 		}
@@ -319,14 +319,14 @@ func BenchmarkIndexKeyFile_Get(b *testing.B) {
 
 	n := 100000
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i * 100))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 100))
 		idx.Put(key, val)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := protocol.ToBytesInt(int32(i % n))
+		key := protocol.BigEndian.Bytes4(int32(i % n))
 		if _, err := idx.Get(key); err != nil {
 			b.Fatal(err)
 		}
@@ -345,8 +345,8 @@ func BenchmarkIndexKeyFile_Get_Random(b *testing.B) {
 	keys := make([]int32, n)
 	for i := 0; i < n; i++ {
 		keys[i] = int32(i)
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i * 100))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 100))
 		idx.Put(key, val)
 	}
 
@@ -355,7 +355,7 @@ func BenchmarkIndexKeyFile_Get_Random(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := protocol.ToBytesInt(keys[i%n])
+		key := protocol.BigEndian.Bytes4(keys[i%n])
 		if _, err := idx.Get(key); err != nil {
 			b.Fatal(err)
 		}
@@ -372,14 +372,14 @@ func BenchmarkIndexKeyFile_HasKey(b *testing.B) {
 
 	n := 100000
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i * 100))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i * 100))
 		idx.Put(key, val)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := protocol.ToBytesInt(int32(i % n))
+		key := protocol.BigEndian.Bytes4(int32(i % n))
 		if _, err := idx.HasKey(key); err != nil {
 			b.Fatal(err)
 		}
@@ -398,14 +398,14 @@ func BenchmarkIndexKeyFile_PutGet_HighCollision(b *testing.B) {
 	// Pre-populate: 500K entries in 200K buckets → avg chain depth ~2.5
 	n := 500000
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(key, val)
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		key := protocol.ToBytesInt(int32(i % n))
+		key := protocol.BigEndian.Bytes4(int32(i % n))
 		if _, err := idx.Get(key); err != nil {
 			b.Fatal(err)
 		}
@@ -422,8 +422,8 @@ func BenchmarkIndexKeyFile_Read_FullScan(b *testing.B) {
 
 	n := 50000
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(key, val)
 	}
 
@@ -452,7 +452,7 @@ func BenchmarkIndexTimeFile_Put(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		timeMs := baseTime + int64(i) // 1ms apart → many entries per 500ms bucket
-		dp := protocol.ToBytes5(int64(i * 10))
+		dp := protocol.BigEndian.Bytes5(int64(i * 10))
 		if _, err := idx.Put(timeMs, dp); err != nil {
 			b.Fatal(err)
 		}
@@ -471,7 +471,7 @@ func BenchmarkIndexTimeFile_Read_SmallRange(b *testing.B) {
 	n := 100000
 	for i := 0; i < n; i++ {
 		timeMs := baseTime + int64(i)*10 // 10ms apart
-		dp := protocol.ToBytes5(int64(i))
+		dp := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(timeMs, dp)
 	}
 
@@ -501,7 +501,7 @@ func BenchmarkIndexTimeFile_Read_MediumRange(b *testing.B) {
 	n := 100000
 	for i := 0; i < n; i++ {
 		timeMs := baseTime + int64(i)*10
-		dp := protocol.ToBytes5(int64(i))
+		dp := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(timeMs, dp)
 	}
 
@@ -531,7 +531,7 @@ func BenchmarkIndexTimeFile_Read_LargeRange(b *testing.B) {
 	n := 100000
 	for i := 0; i < n; i++ {
 		timeMs := baseTime + int64(i)*10
-		dp := protocol.ToBytes5(int64(i))
+		dp := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(timeMs, dp)
 	}
 
@@ -561,7 +561,7 @@ func BenchmarkIndexTimeFile_ReadFromEnd_MediumRange(b *testing.B) {
 	n := 100000
 	for i := 0; i < n; i++ {
 		timeMs := baseTime + int64(i)*10
-		dp := protocol.ToBytes5(int64(i))
+		dp := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(timeMs, dp)
 	}
 
@@ -592,7 +592,7 @@ func BenchmarkIndexTimeFile_Put_HighDensity(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		// Same bucket (within 500ms window) — chain grows long
 		timeMs := baseTime + int64(i%500)
-		dp := protocol.ToBytes5(int64(i))
+		dp := protocol.BigEndian.Bytes5(int64(i))
 		if _, err := idx.Put(timeMs, dp); err != nil {
 			b.Fatal(err)
 		}
@@ -615,8 +615,8 @@ func BenchmarkRealKeyFile_ConcurrentReadWrite(b *testing.B) {
 	n := 50000
 	positions := make([]int64, n)
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesLong(int64(i))
-		val := protocol.ToBytes5(int64(i))
+		key := protocol.BigEndian.Bytes8(int64(i))
+		val := protocol.BigEndian.Bytes5(int64(i))
 		pos, _ := kf.Append(0, key, val)
 		positions[i] = pos
 	}
@@ -632,8 +632,8 @@ func BenchmarkRealKeyFile_ConcurrentReadWrite(b *testing.B) {
 			if localIdx%20 == 0 {
 				// 5% writes
 				mu.Lock()
-				key := protocol.ToBytesLong(int64(writeIdx))
-				val := protocol.ToBytes5(int64(writeIdx))
+				key := protocol.BigEndian.Bytes8(int64(writeIdx))
+				val := protocol.BigEndian.Bytes5(int64(writeIdx))
 				kf.Append(0, key, val)
 				writeIdx++
 				mu.Unlock()
@@ -657,8 +657,8 @@ func BenchmarkIndexKeyFile_ConcurrentGet(b *testing.B) {
 
 	n := 100000
 	for i := 0; i < n; i++ {
-		key := protocol.ToBytesInt(int32(i))
-		val := protocol.ToBytes5(int64(i))
+		key := protocol.BigEndian.Bytes4(int32(i))
+		val := protocol.BigEndian.Bytes5(int64(i))
 		idx.Put(key, val)
 	}
 
@@ -666,7 +666,7 @@ func BenchmarkIndexKeyFile_ConcurrentGet(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		localIdx := 0
 		for pb.Next() {
-			key := protocol.ToBytesInt(int32(localIdx % n))
+			key := protocol.BigEndian.Bytes4(int32(localIdx % n))
 			idx.Get(key)
 			localIdx++
 		}
@@ -686,8 +686,8 @@ func BenchmarkIndexKeyFile_BulkPut_100K(b *testing.B) {
 		}
 
 		for j := 0; j < 100000; j++ {
-			key := protocol.ToBytesInt(int32(j))
-			val := protocol.ToBytes5(int64(j))
+			key := protocol.BigEndian.Bytes4(int32(j))
+			val := protocol.BigEndian.Bytes5(int64(j))
 			idx.Put(key, val)
 		}
 		idx.Close()
@@ -705,7 +705,7 @@ func BenchmarkIndexTimeFile_BulkPut_100K(b *testing.B) {
 
 		for j := 0; j < 100000; j++ {
 			timeMs := baseTime + int64(j)*10
-			dp := protocol.ToBytes5(int64(j))
+			dp := protocol.BigEndian.Bytes5(int64(j))
 			idx.Put(timeMs, dp)
 		}
 		idx.Close()
@@ -721,8 +721,8 @@ func BenchmarkRealKeyFile_BulkAppend_100K(b *testing.B) {
 		}
 
 		for j := 0; j < 100000; j++ {
-			key := protocol.ToBytesLong(int64(j))
-			val := protocol.ToBytes5(int64(j))
+			key := protocol.BigEndian.Bytes8(int64(j))
+			val := protocol.BigEndian.Bytes5(int64(j))
 			kf.Append(0, key, val)
 		}
 		kf.Flush()

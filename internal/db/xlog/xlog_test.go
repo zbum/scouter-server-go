@@ -307,26 +307,26 @@ func TestXLogMultipleDays(t *testing.T) {
 
 // TestXLogProtocolConversion tests byte conversion utilities.
 func TestXLogProtocolConversion(t *testing.T) {
-	// Test ToBytes5 and ToLong5
+	// Test Bytes5 and Int5
 	testVal := int64(123456789)
-	bytes5 := protocol.ToBytes5(testVal)
+	bytes5 := protocol.BigEndian.Bytes5(testVal)
 	if len(bytes5) != 5 {
 		t.Errorf("Expected 5 bytes, got %d", len(bytes5))
 	}
-	recovered := protocol.ToLong5(bytes5, 0)
+	recovered := protocol.BigEndian.Int5(bytes5)
 	if recovered != testVal {
-		t.Errorf("ToBytes5/ToLong5 round-trip failed: expected %d, got %d", testVal, recovered)
+		t.Errorf("Bytes5/Int5 round-trip failed: expected %d, got %d", testVal, recovered)
 	}
 
-	// Test ToBytesLong and ToLong
+	// Test Bytes8 and Int64
 	testLong := int64(9876543210)
-	bytesLong := protocol.ToBytesLong(testLong)
+	bytesLong := protocol.BigEndian.Bytes8(testLong)
 	if len(bytesLong) != 8 {
 		t.Errorf("Expected 8 bytes, got %d", len(bytesLong))
 	}
-	recoveredLong := protocol.ToLong(bytesLong, 0)
+	recoveredLong := protocol.BigEndian.Int64(bytesLong)
 	if recoveredLong != testLong {
-		t.Errorf("ToBytesLong/ToLong round-trip failed: expected %d, got %d", testLong, recoveredLong)
+		t.Errorf("Bytes8/Int64 round-trip failed: expected %d, got %d", testLong, recoveredLong)
 	}
 }
 
@@ -410,7 +410,7 @@ func TestXLogWRBatchWithGxid(t *testing.T) {
 			Txid:    int64(4000 + i),
 			Gxid:    gxid,
 			Elapsed: 50,
-			Data:    protocol.ToBytesLong(int64(i)),
+			Data:    protocol.BigEndian.Bytes8(int64(i)),
 		})
 	}
 

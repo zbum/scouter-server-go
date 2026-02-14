@@ -16,8 +16,8 @@ type MapPack struct {
 	Table []MapEntry
 }
 
-// GetPackType returns the pack type code.
-func (p *MapPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *MapPack) PackType() byte {
 	return PackTypeMap
 }
 

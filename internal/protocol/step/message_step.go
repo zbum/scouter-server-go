@@ -8,7 +8,7 @@ type MessageStep struct {
 	Message string
 }
 
-func (s *MessageStep) GetStepType() byte {
+func (s *MessageStep) StepType() byte {
 	return MESSAGE
 }
 

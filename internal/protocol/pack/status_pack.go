@@ -14,8 +14,8 @@ type StatusPack struct {
 	Data    *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *StatusPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *StatusPack) PackType() byte {
 	return PackTypePerfStatus
 }
 

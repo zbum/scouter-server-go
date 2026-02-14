@@ -11,7 +11,7 @@ type MethodSum struct {
 	CpuTime int32
 }
 
-func (s *MethodSum) GetStepType() byte {
+func (s *MethodSum) StepType() byte {
 	return METHOD_SUM
 }
 

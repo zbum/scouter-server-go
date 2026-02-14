@@ -6,7 +6,7 @@ type IntArray struct {
 	Value []int32
 }
 
-func (v *IntArray) GetValueType() byte {
+func (v *IntArray) ValueType() byte {
 	return TYPE_ARRAY_INT
 }
 

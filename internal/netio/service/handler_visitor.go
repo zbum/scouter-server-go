@@ -60,7 +60,7 @@ func RegisterVisitorHandlers(r *Registry, visitorDB *visitor.VisitorDB, hourlyDB
 		}
 
 		var count int64
-		if visitorDB != nil && len(objHashes) > 0 {
+		if visitorDB != nil {
 			count = visitorDB.CountByObjGroup(objHashes)
 		}
 
@@ -138,7 +138,7 @@ func RegisterVisitorHandlers(r *Registry, visitorDB *visitor.VisitorDB, hourlyDB
 		for d := startTime; !d.After(endTime); d = d.AddDate(0, 0, 1) {
 			date := d.Format("20060102")
 			var count int64
-			if visitorDB != nil && len(objHashes) > 0 {
+			if visitorDB != nil {
 				count = visitorDB.CountByObjGroup(objHashes)
 				// For historical dates, load from disk
 				if date != time.Now().Format("20060102") {
@@ -179,7 +179,7 @@ func RegisterVisitorHandlers(r *Registry, visitorDB *visitor.VisitorDB, hourlyDB
 			date = time.Now().Format("20060102")
 		}
 
-		if hourlyDB != nil && len(objHashes) > 0 {
+		if hourlyDB != nil {
 			hours := hourlyDB.LoadAllHours(date, objHashes)
 			resp := &pack.MapPack{}
 			hourList := value.NewListValue()

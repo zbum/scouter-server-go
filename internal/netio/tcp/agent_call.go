@@ -62,7 +62,7 @@ func (ac *AgentCall) Call(objHash int32, cmd string, param *pack.MapPack) *pack.
 		return mp
 	}
 
-	slog.Debug("AgentCall: unexpected response type", "objHash", objHash, "type", result.GetPackType())
+	slog.Debug("AgentCall: unexpected response type", "objHash", objHash, "type", result.PackType())
 	return nil
 }
 

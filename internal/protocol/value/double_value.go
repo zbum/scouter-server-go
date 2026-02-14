@@ -6,16 +6,16 @@ type DoubleValue struct {
 	Value float64
 }
 
-func (v *DoubleValue) GetValueType() byte {
+func (v *DoubleValue) ValueType() byte {
 	return TYPE_DOUBLE
 }
 
 func (v *DoubleValue) Write(o *protocol.DataOutputX) {
-	o.WriteDouble(v.Value)
+	o.WriteFloat64(v.Value)
 }
 
 func (v *DoubleValue) Read(d *protocol.DataInputX) error {
-	val, err := d.ReadDouble()
+	val, err := d.ReadFloat64()
 	if err != nil {
 		return err
 	}

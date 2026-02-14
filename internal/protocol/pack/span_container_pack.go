@@ -12,23 +12,23 @@ type SpanContainerPack struct {
 	Spans     []byte
 }
 
-// GetPackType returns the pack type code.
-func (p *SpanContainerPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *SpanContainerPack) PackType() byte {
 	return PackTypeSpanContainer
 }
 
 // Write serializes the SpanContainerPack to the output stream.
 func (p *SpanContainerPack) Write(o *protocol.DataOutputX) {
-	o.WriteLong(p.Gxid)
+	o.WriteInt64(p.Gxid)
 	o.WriteDecimal(int64(p.SpanCount))
-	o.WriteLong(p.Timestamp)
+	o.WriteInt64(p.Timestamp)
 	o.WriteBlob(p.Spans)
 }
 
 // Read deserializes the SpanContainerPack from the input stream.
 func (p *SpanContainerPack) Read(d *protocol.DataInputX) error {
 	var err error
-	if p.Gxid, err = d.ReadLong(); err != nil {
+	if p.Gxid, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if val, err := d.ReadDecimal(); err != nil {
@@ -36,7 +36,7 @@ func (p *SpanContainerPack) Read(d *protocol.DataInputX) error {
 	} else {
 		p.SpanCount = int32(val)
 	}
-	if p.Timestamp, err = d.ReadLong(); err != nil {
+	if p.Timestamp, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if p.Spans, err = d.ReadBlob(); err != nil {

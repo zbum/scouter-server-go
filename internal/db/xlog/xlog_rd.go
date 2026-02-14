@@ -10,7 +10,7 @@ import (
 
 // XLogRD is an XLog reader.
 type XLogRD struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	baseDir string
 	days    map[string]*dayContainer
 }
@@ -25,10 +25,20 @@ func NewXLogRD(baseDir string) *XLogRD {
 
 // getContainer retrieves or opens a day container for reading.
 func (r *XLogRD) getContainer(date string) (*dayContainer, error) {
+	// Fast path: read lock for existing container
+	r.mu.RLock()
+	container, exists := r.days[date]
+	r.mu.RUnlock()
+	if exists {
+		return container, nil
+	}
+
+	// Slow path: write lock to create container
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	container, exists := r.days[date]
+	// Double-check after acquiring write lock
+	container, exists = r.days[date]
 	if exists {
 		return container, nil
 	}
@@ -71,7 +81,7 @@ func (r *XLogRD) ReadByTime(date string, stime, etime int64, handler func(data [
 	}
 
 	return container.index.timeIndex.Read(stime, etime, func(timeMs int64, dataPos []byte) bool {
-		offset := protocol.ToLong5(dataPos, 0)
+		offset := protocol.BigEndian.Int5(dataPos)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
 			return handler(data)
@@ -138,7 +148,7 @@ func (r *XLogRD) ReadFromEndTime(date string, stime, etime int64, handler func(d
 	}
 
 	return container.index.timeIndex.ReadFromEnd(stime, etime, func(timeMs int64, dataPos []byte) bool {
-		offset := protocol.ToLong5(dataPos, 0)
+		offset := protocol.BigEndian.Int5(dataPos)
 		data, err := container.data.Read(offset)
 		if err == nil && data != nil {
 			return handler(data)

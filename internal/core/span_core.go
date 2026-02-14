@@ -87,7 +87,7 @@ func (sc *SpanCore) ContainerHandler() PackHandler {
 			sp, ok := p.(*pack.SpanPack)
 			if !ok {
 				slog.Warn("SpanCore: unexpected pack type in container",
-					"type", p.GetPackType())
+					"type", p.PackType())
 				continue
 			}
 			select {

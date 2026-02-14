@@ -9,7 +9,7 @@ type MessageSum struct {
 	Count int32
 }
 
-func (s *MessageSum) GetStepType() byte {
+func (s *MessageSum) StepType() byte {
 	return MESSAGE_SUM
 }
 

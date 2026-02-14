@@ -71,8 +71,8 @@ func (p *ProfileData) Write(txid int64, block []byte) error {
 		return err
 	}
 
-	key := protocol.ToBytesLong(txid)
-	return p.index.Put(key, protocol.ToBytes5(offset))
+	key := protocol.BigEndian.Bytes8(txid)
+	return p.index.Put(key, protocol.BigEndian.Bytes5(offset))
 }
 
 // Read retrieves all profile blocks for a txid.
@@ -81,7 +81,7 @@ func (p *ProfileData) Read(txid int64, maxBlocks int) ([][]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	key := protocol.ToBytesLong(txid)
+	key := protocol.BigEndian.Bytes8(txid)
 	offsets, err := p.index.GetAll(key)
 	if err != nil {
 		return nil, err
@@ -102,7 +102,7 @@ func (p *ProfileData) Read(txid int64, maxBlocks int) ([][]byte, error) {
 			break
 		}
 
-		offset := protocol.ToLong5(posBytes, 0)
+		offset := protocol.BigEndian.Int5(posBytes)
 		if _, err := f.Seek(offset, 0); err != nil {
 			continue
 		}

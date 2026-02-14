@@ -12,7 +12,7 @@ type SqlStep struct {
 	Error   int32
 }
 
-func (s *SqlStep) GetStepType() byte {
+func (s *SqlStep) StepType() byte {
 	return SQL
 }
 

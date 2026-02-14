@@ -110,7 +110,7 @@ func (d *DailyCounterData) Write(objHash int32, counterName string, bucket int, 
 	var offset int64
 	if posBytes != nil {
 		// Record exists, update in place
-		offset = protocol.ToLong5(posBytes, 0)
+		offset = protocol.BigEndian.Int5(posBytes)
 	} else {
 		// Create new record: seek to end, write empty record
 		fi, err := d.data.Stat()
@@ -131,7 +131,7 @@ func (d *DailyCounterData) Write(objHash int32, counterName string, bucket int, 
 		}
 
 		// Index the new record
-		if err := d.index.Put(key, protocol.ToBytes5(offset)); err != nil {
+		if err := d.index.Put(key, protocol.BigEndian.Bytes5(offset)); err != nil {
 			return err
 		}
 	}
@@ -162,7 +162,7 @@ func (d *DailyCounterData) Read(objHash int32, counterName string, bucket int) (
 		return 0, false, nil
 	}
 
-	offset := protocol.ToLong5(posBytes, 0)
+	offset := protocol.BigEndian.Int5(posBytes)
 	bucketOffset := offset + 2 + int64(bucket)*BytesPerBucket
 
 	buf := make([]byte, 8)
@@ -191,7 +191,7 @@ func (d *DailyCounterData) ReadAll(objHash int32, counterName string) ([]float64
 		return nil, nil
 	}
 
-	offset := protocol.ToLong5(posBytes, 0)
+	offset := protocol.BigEndian.Int5(posBytes)
 	record := make([]byte, RecordSize)
 	if _, err := d.data.ReadAt(record, offset); err != nil {
 		return nil, err

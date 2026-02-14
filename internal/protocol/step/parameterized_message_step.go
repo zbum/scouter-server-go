@@ -11,7 +11,7 @@ type ParameterizedMessageStep struct {
 	ParamString string
 }
 
-func (s *ParameterizedMessageStep) GetStepType() byte {
+func (s *ParameterizedMessageStep) StepType() byte {
 	return PARAMETERIZED_MESSAGE
 }
 

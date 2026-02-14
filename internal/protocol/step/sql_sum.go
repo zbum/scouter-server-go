@@ -14,7 +14,7 @@ type SqlSum struct {
 	ParamError string
 }
 
-func (s *SqlSum) GetStepType() byte {
+func (s *SqlSum) StepType() byte {
 	return SQL_SUM
 }
 

@@ -170,6 +170,50 @@ func TestObjectPack(t *testing.T) {
 	}
 }
 
+func TestReadXLogFilterFields(t *testing.T) {
+	tests := []struct {
+		name    string
+		objHash int32
+		elapsed int32
+	}{
+		{"zero values", 0, 0},
+		{"small values", 42, 150},
+		{"typical values", 123456, 1500},
+		{"negative objHash", -999, 300},
+		{"large elapsed", 100, 2147483647},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			xp := &XLogPack{
+				EndTime: 1700000000000,
+				ObjHash: tt.objHash,
+				Service: 999,
+				Txid:    111222333,
+				Caller:  444555666,
+				Gxid:    777888999,
+				Elapsed: tt.elapsed,
+				Error:   1,
+			}
+
+			out := protocol.NewDataOutputX()
+			WritePack(out, xp)
+			data := out.ToByteArray()
+
+			objHash, elapsed, err := ReadXLogFilterFields(data)
+			if err != nil {
+				t.Fatalf("ReadXLogFilterFields failed: %v", err)
+			}
+			if objHash != tt.objHash {
+				t.Errorf("ObjHash: expected %d, got %d", tt.objHash, objHash)
+			}
+			if elapsed != tt.elapsed {
+				t.Errorf("Elapsed: expected %d, got %d", tt.elapsed, elapsed)
+			}
+		})
+	}
+}
+
 func TestAllPackTypes(t *testing.T) {
 	packTypes := []byte{
 		PackTypeMap,
@@ -196,8 +240,8 @@ func TestAllPackTypes(t *testing.T) {
 			t.Errorf("Failed to create pack type %d: %v", typeCode, err)
 			continue
 		}
-		if pack.GetPackType() != typeCode {
-			t.Errorf("Pack type mismatch: expected %d, got %d", typeCode, pack.GetPackType())
+		if pack.PackType() != typeCode {
+			t.Errorf("Pack type mismatch: expected %d, got %d", typeCode, pack.PackType())
 		}
 	}
 }

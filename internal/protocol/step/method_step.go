@@ -10,7 +10,7 @@ type MethodStep struct {
 	CpuTime  int32
 }
 
-func (s *MethodStep) GetStepType() byte {
+func (s *MethodStep) StepType() byte {
 	return METHOD
 }
 

@@ -43,13 +43,13 @@ func NewXLogIndex(dir string) (*XLogIndex, error) {
 
 // SetByTime stores a time → data offset mapping.
 func (x *XLogIndex) SetByTime(timeMs int64, dataPos int64) error {
-	_, err := x.timeIndex.Put(timeMs, protocol.ToBytes5(dataPos))
+	_, err := x.timeIndex.Put(timeMs, protocol.BigEndian.Bytes5(dataPos))
 	return err
 }
 
 // SetByTxid stores a txid → data offset mapping.
 func (x *XLogIndex) SetByTxid(txid int64, dataPos int64) error {
-	return x.txidIndex.Put(protocol.ToBytesLong(txid), protocol.ToBytes5(dataPos))
+	return x.txidIndex.Put(protocol.BigEndian.Bytes8(txid), protocol.BigEndian.Bytes5(dataPos))
 }
 
 // SetByGxid stores a gxid → data offset mapping. Skips if gxid == 0.
@@ -57,31 +57,31 @@ func (x *XLogIndex) SetByGxid(gxid int64, dataPos int64) error {
 	if gxid == 0 {
 		return nil
 	}
-	return x.gxidIndex.Put(protocol.ToBytesLong(gxid), protocol.ToBytes5(dataPos))
+	return x.gxidIndex.Put(protocol.BigEndian.Bytes8(gxid), protocol.BigEndian.Bytes5(dataPos))
 }
 
 // GetByTxid retrieves the data offset for a given txid. Returns -1 if not found.
 func (x *XLogIndex) GetByTxid(txid int64) (int64, error) {
-	value, err := x.txidIndex.Get(protocol.ToBytesLong(txid))
+	value, err := x.txidIndex.Get(protocol.BigEndian.Bytes8(txid))
 	if err != nil {
 		return -1, err
 	}
 	if value == nil {
 		return -1, nil
 	}
-	return protocol.ToLong5(value, 0), nil
+	return protocol.BigEndian.Int5(value), nil
 }
 
 // GetByGxid retrieves all data offsets for a given gxid.
 func (x *XLogIndex) GetByGxid(gxid int64) ([]int64, error) {
-	values, err := x.gxidIndex.GetAll(protocol.ToBytesLong(gxid))
+	values, err := x.gxidIndex.GetAll(protocol.BigEndian.Bytes8(gxid))
 	if err != nil {
 		return nil, err
 	}
 
 	offsets := make([]int64, len(values))
 	for i, v := range values {
-		offsets[i] = protocol.ToLong5(v, 0)
+		offsets[i] = protocol.BigEndian.Int5(v)
 	}
 	return offsets, nil
 }

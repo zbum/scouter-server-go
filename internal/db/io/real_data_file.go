@@ -41,7 +41,7 @@ func (f *RealDataFile) Filename() string {
 	return f.filename
 }
 
-func (f *RealDataFile) GetOffset() int64 {
+func (f *RealDataFile) Offset() int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.offset

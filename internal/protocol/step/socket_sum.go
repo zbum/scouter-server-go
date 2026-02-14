@@ -12,7 +12,7 @@ type SocketSum struct {
 	Error   int32
 }
 
-func (s *SocketSum) GetStepType() byte {
+func (s *SocketSum) StepType() byte {
 	return SOCKET_SUM
 }
 

@@ -6,7 +6,7 @@ type LongArray struct {
 	Value []int64
 }
 
-func (v *LongArray) GetValueType() byte {
+func (v *LongArray) ValueType() byte {
 	return TYPE_ARRAY_LONG
 }
 

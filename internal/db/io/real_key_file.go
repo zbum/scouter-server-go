@@ -158,7 +158,7 @@ func (f *RealKeyFile) getRecordReadAt(pos int64) (*KeyRecord, error) {
 	off++
 
 	// prevPos (5 bytes)
-	r.PrevPos = protocol.ToLong5(buf[off:off+5], 0)
+	r.PrevPos = protocol.BigEndian.Int5(buf[off : off+5])
 	off += 5
 
 	// keyLen (2 bytes) + key
@@ -173,7 +173,7 @@ func (f *RealKeyFile) getRecordReadAt(pos int64) (*KeyRecord, error) {
 	off += keyLen
 
 	// blob prefix (1 byte)
-	blobPrefix := int(buf[off]) & 0xFF
+	blobPrefix := int(buf[off])
 	off++
 
 	// Determine blob data length
@@ -228,7 +228,7 @@ func (f *RealKeyFile) readBlob() ([]byte, error) {
 	if _, err := f.raf.Read(b[:]); err != nil {
 		return nil, err
 	}
-	baseLen := int(b[0]) & 0xFF
+	baseLen := int(b[0])
 
 	switch baseLen {
 	case 0:
@@ -293,7 +293,7 @@ func (f *RealKeyFile) GetPrevPos(pos int64) (int64, error) {
 	if _, err := f.raf.Read(buf[:]); err != nil {
 		return 0, err
 	}
-	return protocol.ToLong5(buf[:], 0), nil
+	return protocol.BigEndian.Int5(buf[:]), nil
 }
 
 func (f *RealKeyFile) GetTimeKey(pos int64) ([]byte, error) {
@@ -366,7 +366,7 @@ func (f *RealKeyFile) SetHashLink(pos int64, value int64) error {
 	if _, err := f.raf.Seek(pos+1, 0); err != nil {
 		return err
 	}
-	_, err := f.raf.Write(protocol.ToBytes5(value))
+	_, err := f.raf.Write(protocol.BigEndian.Bytes5(value))
 	return err
 }
 
@@ -464,11 +464,11 @@ func (f *RealKeyFile) Append(prevPos int64, indexKey []byte, dataPos []byte) (in
 	return pos, nil
 }
 
-func (f *RealKeyFile) GetFirstPos() int64 {
+func (f *RealKeyFile) FirstPos() int64 {
 	return kfileHeaderSize
 }
 
-func (f *RealKeyFile) GetLength() int64 {
+func (f *RealKeyFile) Length() int64 {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.fileEnd + int64(len(f.appendBuf))

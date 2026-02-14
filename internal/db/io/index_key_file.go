@@ -167,8 +167,8 @@ func (f *IndexKeyFile) Delete(key []byte) (int, error) {
 
 // Read iterates over all non-deleted records in the key file.
 func (f *IndexKeyFile) Read(handler func(key []byte, data []byte)) error {
-	pos := f.keyFile.GetFirstPos()
-	length := f.keyFile.GetLength()
+	pos := f.keyFile.FirstPos()
+	length := f.keyFile.Length()
 	for pos < length && pos > 0 {
 		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
@@ -184,15 +184,15 @@ func (f *IndexKeyFile) Read(handler func(key []byte, data []byte)) error {
 
 // ReadWithDataReader iterates and resolves data positions to actual data.
 func (f *IndexKeyFile) ReadWithDataReader(handler func(key []byte, data []byte), reader func(int64) []byte) error {
-	pos := f.keyFile.GetFirstPos()
-	length := f.keyFile.GetLength()
+	pos := f.keyFile.FirstPos()
+	length := f.keyFile.Length()
 	for pos < length && pos > 0 {
 		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
 			return err
 		}
 		if !r.Deleted {
-			dataPos := protocol.ToLong5(r.DataPos, 0)
+			dataPos := protocol.BigEndian.Int5(r.DataPos)
 			handler(r.TimeKey, reader(dataPos))
 		}
 		pos = r.Offset
@@ -200,11 +200,11 @@ func (f *IndexKeyFile) ReadWithDataReader(handler func(key []byte, data []byte),
 	return nil
 }
 
-func (f *IndexKeyFile) GetStat() map[string]interface{} {
+func (f *IndexKeyFile) Stat() map[string]interface{} {
 	deleted := 0
 	count := 0
-	pos := f.keyFile.GetFirstPos()
-	length := f.keyFile.GetLength()
+	pos := f.keyFile.FirstPos()
+	length := f.keyFile.Length()
 	for pos < length && pos > 0 {
 		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {
@@ -217,7 +217,7 @@ func (f *IndexKeyFile) GetStat() map[string]interface{} {
 		}
 		pos = r.Offset
 	}
-	scatter := f.hashBlock.GetCount()
+	scatter := f.hashBlock.Count()
 
 	out := map[string]interface{}{
 		"count":   count,

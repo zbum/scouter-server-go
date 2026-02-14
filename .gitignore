@@ -44,3 +44,4 @@ database/
 conf/account.xml
 conf/account_group.xml
 *.scouter
+logs/

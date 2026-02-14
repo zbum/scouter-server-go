@@ -8,7 +8,7 @@ type SqlStep2 struct {
 	XType byte
 }
 
-func (s *SqlStep2) GetStepType() byte {
+func (s *SqlStep2) StepType() byte {
 	return SQL2
 }
 

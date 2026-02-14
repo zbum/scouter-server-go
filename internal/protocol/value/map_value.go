@@ -15,7 +15,7 @@ func NewMapValue() *MapValue {
 	return &MapValue{Entries: make([]MapEntry, 0)}
 }
 
-func (v *MapValue) GetValueType() byte {
+func (v *MapValue) ValueType() byte {
 	return TYPE_MAP
 }
 

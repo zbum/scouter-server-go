@@ -11,15 +11,15 @@ type TextPack struct {
 	Text  string
 }
 
-// GetPackType returns the pack type code.
-func (p *TextPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *TextPack) PackType() byte {
 	return PackTypeText
 }
 
 // Write serializes the TextPack to the output stream.
 func (p *TextPack) Write(o *protocol.DataOutputX) {
 	o.WriteText(p.XType)
-	o.WriteInt(p.Hash)
+	o.WriteInt32(p.Hash)
 	o.WriteText(p.Text)
 }
 
@@ -29,7 +29,7 @@ func (p *TextPack) Read(d *protocol.DataInputX) error {
 	if p.XType, err = d.ReadText(); err != nil {
 		return err
 	}
-	if p.Hash, err = d.ReadInt(); err != nil {
+	if p.Hash, err = d.ReadInt32(); err != nil {
 		return err
 	}
 	if p.Text, err = d.ReadText(); err != nil {

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"sync"
 	"time"
 
 	"github.com/zbum/scouter-server-go/internal/config"
@@ -98,26 +99,23 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 		}
 
 		cnt := 0
+		needFilter := len(objHashFilter) > 0 || limit > 0
 		dataHandler := func(data []byte) bool {
 			if max > 0 && cnt >= int(max) {
 				return false
 			}
-			innerDin := protocol.NewDataInputX(data)
-			xp, err := pack.ReadPack(innerDin)
-			if err != nil {
-				return true
-			}
-			xlp, ok := xp.(*pack.XLogPack)
-			if !ok {
-				return true
-			}
-			// objHash filter
-			if len(objHashFilter) > 0 && !objHashFilter[xlp.ObjHash] {
-				return true
-			}
-			// elapsed filter — skip fast transactions (matches Java's x.elapsed > limit)
-			if limit > 0 && xlp.Elapsed <= limit {
-				return true
+			if needFilter {
+				objHash, elapsed, err := pack.ReadXLogFilterFields(data)
+				if err != nil {
+					return true
+				}
+				if len(objHashFilter) > 0 && !objHashFilter[objHash] {
+					return true
+				}
+				// elapsed filter — skip fast transactions (matches Java's x.elapsed > limit)
+				if limit > 0 && elapsed <= limit {
+					return true
+				}
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)
 			dout.Write(data)
@@ -217,22 +215,38 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 			return
 		}
 
-		for _, hv := range txidLv.Value {
+		// Parallel lookup: each txid does disk I/O (index + data read via pread),
+		// so concurrent goroutines overlap I/O latency.
+		results := make([][]byte, len(txidLv.Value))
+		var wg sync.WaitGroup
+
+		for i, hv := range txidLv.Value {
 			dv, ok := hv.(*value.DecimalValue)
 			if !ok {
 				continue
 			}
-			txid := dv.Value
-			data, found, err := xlogWR.GetByTxid(date, txid)
-			if !found {
-				data, err = xlogRD.GetByTxid(date, txid)
+			wg.Add(1)
+			go func(idx int, txid int64) {
+				defer wg.Done()
+				data, found, err := xlogWR.GetByTxid(date, txid)
+				if !found {
+					data, err = xlogRD.GetByTxid(date, txid)
+				}
+				if err == nil && data != nil {
+					results[idx] = data
+				}
+			}(i, dv.Value)
+		}
+
+		wg.Wait()
+
+		// Write results sequentially (dout is not thread-safe)
+		for _, data := range results {
+			if data != nil {
+				dout.WriteByte(protocol.FLAG_HAS_NEXT)
+				dout.Write(data)
+				dout.Flush()
 			}
-			if err != nil || data == nil {
-				continue
-			}
-			dout.WriteByte(protocol.FLAG_HAS_NEXT)
-			dout.Write(data)
-			dout.Flush()
 		}
 	})
 
@@ -326,15 +340,12 @@ func RegisterXLogReadHandlers(r *Registry, xlogRD *xlog.XLogRD, profileRD *profi
 				return false
 			}
 			if objHash != 0 {
-				innerDin := protocol.NewDataInputX(data)
-				xp, err := pack.ReadPack(innerDin)
+				packObjHash, _, err := pack.ReadXLogFilterFields(data)
 				if err != nil {
 					return true
 				}
-				if xlp, ok := xp.(*pack.XLogPack); ok {
-					if xlp.ObjHash != objHash {
-						return true
-					}
+				if packObjHash != objHash {
+					return true
 				}
 			}
 			dout.WriteByte(protocol.FLAG_HAS_NEXT)

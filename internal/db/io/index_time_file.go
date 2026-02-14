@@ -44,7 +44,7 @@ func (f *IndexTimeFile) Put(timeMs int64, dataPos []byte) (int64, error) {
 		return 0, errors.New("invalid key/value")
 	}
 	prevKeyPos := f.timeBlockHash.Get(timeMs)
-	newKeyPos, err := f.keyFile.Append(prevKeyPos, protocol.ToBytesLong(timeMs), dataPos)
+	newKeyPos, err := f.keyFile.Append(prevKeyPos, protocol.BigEndian.Bytes8(timeMs), dataPos)
 	if err != nil {
 		return 0, err
 	}
@@ -65,7 +65,7 @@ func (f *IndexTimeFile) getSecAll(timeMs int64) ([]TimeToData, error) {
 			return nil, err
 		}
 		if !r.Deleted {
-			t := protocol.ToLong(r.TimeKey, 0)
+			t := protocol.BigEndian.Int64(r.TimeKey)
 			items = append(items, TimeToData{Time: t, DataPos: r.DataPos})
 		}
 		pos = r.PrevPos
@@ -86,7 +86,7 @@ func (f *IndexTimeFile) GetDirect(pos int64) (*TimeToData, error) {
 		return nil, nil
 	}
 	return &TimeToData{
-		Time:    protocol.ToLong(r.TimeKey, 0),
+		Time:    protocol.BigEndian.Int64(r.TimeKey),
 		DataPos: r.DataPos,
 	}, nil
 }
@@ -180,7 +180,7 @@ func (f *IndexTimeFile) ReadWithDataReader(stime int64, etime int64,
 		}
 		for _, item := range items {
 			if item.Time >= stime && item.Time <= etime {
-				dataPos := protocol.ToLong5(item.DataPos, 0)
+				dataPos := protocol.BigEndian.Int5(item.DataPos)
 				if !handler(item.Time, reader(dataPos)) {
 					return nil
 				}
@@ -208,7 +208,7 @@ func (f *IndexTimeFile) ReadFromEndWithDataReader(stime int64, etime int64,
 		for j := len(items) - 1; j >= 0; j-- {
 			item := items[j]
 			if item.Time >= stime && item.Time <= etime {
-				dataPos := protocol.ToLong5(item.DataPos, 0)
+				dataPos := protocol.BigEndian.Int5(item.DataPos)
 				if !handler(item.Time, reader(dataPos)) {
 					return nil
 				}
@@ -221,8 +221,8 @@ func (f *IndexTimeFile) ReadFromEndWithDataReader(stime int64, etime int64,
 
 // ReadAll iterates over all records sequentially in the key file.
 func (f *IndexTimeFile) ReadAll(handler func(key []byte, dataPos []byte)) error {
-	pos := f.keyFile.GetFirstPos()
-	length := f.keyFile.GetLength()
+	pos := f.keyFile.FirstPos()
+	length := f.keyFile.Length()
 	for pos < length && pos > 0 {
 		r, err := f.keyFile.GetRecord(pos)
 		if err != nil {

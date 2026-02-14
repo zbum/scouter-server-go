@@ -2,7 +2,6 @@ package value
 
 import (
 	"fmt"
-	"reflect"
 
 	"github.com/zbum/scouter-server-go/internal/protocol"
 )
@@ -29,7 +28,7 @@ const (
 )
 
 type Value interface {
-	GetValueType() byte
+	ValueType() byte
 	Write(o *protocol.DataOutputX)
 	Read(d *protocol.DataInputX) error
 }
@@ -76,10 +75,10 @@ func CreateValue(typeCode byte) (Value, error) {
 }
 
 func WriteValue(o *protocol.DataOutputX, v Value) {
-	if v == nil || (reflect.ValueOf(v).Kind() == reflect.Ptr && reflect.ValueOf(v).IsNil()) {
+	if v == nil {
 		v = &NullValue{}
 	}
-	o.WriteByte(v.GetValueType())
+	o.WriteByte(v.ValueType())
 	v.Write(o)
 }
 

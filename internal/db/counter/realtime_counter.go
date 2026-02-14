@@ -78,7 +78,7 @@ func (r *RealtimeCounterData) Write(objHash int32, timeSec int32, counters map[s
 	}
 
 	key := makeKey(objHash, timeSec)
-	return r.index.Put(key, protocol.ToBytes5(offset))
+	return r.index.Put(key, protocol.BigEndian.Bytes5(offset))
 }
 
 // Read retrieves counter values for an object at a specific second.
@@ -95,7 +95,7 @@ func (r *RealtimeCounterData) Read(objHash int32, timeSec int32) (map[string]val
 		return nil, nil
 	}
 
-	offset := protocol.ToLong5(posBytes, 0)
+	offset := protocol.BigEndian.Int5(posBytes)
 	return r.readAtOffset(offset)
 }
 
@@ -159,7 +159,7 @@ func (r *RealtimeCounterData) ReadRange(objHash int32, startSec, endSec int32, h
 			continue
 		}
 
-		offset := protocol.ToLong5(posBytes, 0)
+		offset := protocol.BigEndian.Int5(posBytes)
 		counters, err := r.readAtOffset(offset)
 		if err != nil {
 			continue

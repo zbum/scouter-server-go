@@ -6,7 +6,7 @@ type IP4Value struct {
 	Value [4]byte
 }
 
-func (v *IP4Value) GetValueType() byte {
+func (v *IP4Value) ValueType() byte {
 	return TYPE_IP4ADDR
 }
 

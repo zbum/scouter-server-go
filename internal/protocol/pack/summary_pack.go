@@ -14,15 +14,15 @@ type SummaryPack struct {
 	Table   *value.MapValue
 }
 
-// GetPackType returns the pack type code.
-func (p *SummaryPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *SummaryPack) PackType() byte {
 	return PackTypeSummary
 }
 
 // Write serializes the SummaryPack to the output stream.
 func (p *SummaryPack) Write(o *protocol.DataOutputX) {
 	o.WriteDecimal(p.Time)
-	o.WriteInt(p.ObjHash)
+	o.WriteInt32(p.ObjHash)
 	o.WriteText(p.ObjType)
 	o.WriteByte(p.SType)
 	value.WriteValue(o, p.Table)
@@ -34,7 +34,7 @@ func (p *SummaryPack) Read(d *protocol.DataInputX) error {
 	if p.Time, err = d.ReadDecimal(); err != nil {
 		return err
 	}
-	if p.ObjHash, err = d.ReadInt(); err != nil {
+	if p.ObjHash, err = d.ReadInt32(); err != nil {
 		return err
 	}
 	if p.ObjType, err = d.ReadText(); err != nil {

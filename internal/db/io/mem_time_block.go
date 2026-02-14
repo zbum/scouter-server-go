@@ -53,7 +53,7 @@ func (m *MemTimeBlock) open() error {
 		}
 		m.bufSize = len(data) - memHeadReserved
 		m.buf = data
-		m.count = int(protocol.ToInt(m.buf, 4))
+		m.count = int(protocol.BigEndian.Int32(m.buf[4:]))
 	}
 	return nil
 }
@@ -68,10 +68,10 @@ func (m *MemTimeBlock) Get(timeMs int64) int64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	pos := m.offset(timeMs)
-	return protocol.ToLong5(m.buf, pos)
+	return protocol.BigEndian.Int5(m.buf[pos:])
 }
 
-func (m *MemTimeBlock) GetCount() int {
+func (m *MemTimeBlock) Count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.count
@@ -85,16 +85,16 @@ func (m *MemTimeBlock) AddCount(n int) {
 
 func (m *MemTimeBlock) addCountInternal(n int) {
 	m.count += n
-	protocol.SetBytes(m.buf, 4, protocol.ToBytesInt(int32(m.count)))
+	protocol.BigEndian.PutInt32(m.buf[4:], int32(m.count))
 }
 
 func (m *MemTimeBlock) Put(timeMs int64, value int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b := protocol.ToBytes5(value)
+	b := protocol.BigEndian.Bytes5(value)
 	pos := m.offset(timeMs)
 
-	if protocol.ToLong5(m.buf, pos) == 0 {
+	if protocol.BigEndian.Int5(m.buf[pos:]) == 0 {
 		m.addCountInternal(1)
 	}
 	copy(m.buf[pos:], b)

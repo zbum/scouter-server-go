@@ -57,9 +57,60 @@ type XLogPack struct {
 	IgnoreGlobalConsequentSampling    bool
 }
 
-// GetPackType returns the pack type code.
-func (p *XLogPack) GetPackType() byte {
+// PackType returns the pack type code.
+func (p *XLogPack) PackType() byte {
 	return PackTypeXLog
+}
+
+// ReadXLogFilterFields extracts only ObjHash and Elapsed from serialized XLogPack data
+// by parsing just the first 7 fields instead of all 42+ fields.
+// This avoids the cost of full deserialization when only filter fields are needed.
+func ReadXLogFilterFields(data []byte) (objHash int32, elapsed int32, err error) {
+	din := protocol.NewDataInputX(data)
+
+	// Skip pack type byte
+	if _, err = din.ReadByte(); err != nil {
+		return
+	}
+
+	// Read blob to get inner buffer
+	blob, err := din.ReadBlob()
+	if err != nil {
+		return
+	}
+
+	d := protocol.NewDataInputX(blob)
+
+	// 1. Skip EndTime (WriteDecimal)
+	if _, err = d.ReadDecimal(); err != nil {
+		return
+	}
+
+	// 2. Read ObjHash (WriteDecimal)
+	v, err := d.ReadDecimal()
+	if err != nil {
+		return
+	}
+	objHash = int32(v)
+
+	// 3. Skip Service (WriteDecimal)
+	if _, err = d.ReadDecimal(); err != nil {
+		return
+	}
+
+	// 4-6. Skip Txid + Caller + Gxid (WriteLong × 3 = 24 bytes)
+	if err = d.SkipBytes(24); err != nil {
+		return
+	}
+
+	// 7. Read Elapsed (WriteDecimal)
+	v, err = d.ReadDecimal()
+	if err != nil {
+		return
+	}
+	elapsed = int32(v)
+
+	return
 }
 
 // Write serializes the XLogPack using blob wrapping.
@@ -70,9 +121,9 @@ func (p *XLogPack) Write(o *protocol.DataOutputX) {
 	inner.WriteDecimal(p.EndTime)
 	inner.WriteDecimal(int64(p.ObjHash))
 	inner.WriteDecimal(int64(p.Service))
-	inner.WriteLong(p.Txid)
-	inner.WriteLong(p.Caller)
-	inner.WriteLong(p.Gxid)
+	inner.WriteInt64(p.Txid)
+	inner.WriteInt64(p.Caller)
+	inner.WriteInt64(p.Gxid)
 	inner.WriteDecimal(int64(p.Elapsed))
 	inner.WriteDecimal(int64(p.Error))
 	inner.WriteDecimal(int64(p.Cpu))
@@ -138,13 +189,13 @@ func (p *XLogPack) Read(din *protocol.DataInputX) error {
 	} else {
 		p.Service = int32(val)
 	}
-	if p.Txid, err = d.ReadLong(); err != nil {
+	if p.Txid, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Caller, err = d.ReadLong(); err != nil {
+	if p.Caller, err = d.ReadInt64(); err != nil {
 		return err
 	}
-	if p.Gxid, err = d.ReadLong(); err != nil {
+	if p.Gxid, err = d.ReadInt64(); err != nil {
 		return err
 	}
 	if val, err := d.ReadDecimal(); err != nil {

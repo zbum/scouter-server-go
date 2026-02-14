@@ -12,7 +12,7 @@ type ApiCallSum struct {
 	Error   int32
 }
 
-func (s *ApiCallSum) GetStepType() byte {
+func (s *ApiCallSum) StepType() byte {
 	return APICALL_SUM
 }
 

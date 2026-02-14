@@ -28,7 +28,7 @@ const (
 
 // Pack is the interface that all pack types must implement.
 type Pack interface {
-	GetPackType() byte
+	PackType() byte
 	Write(o *protocol.DataOutputX)
 	Read(d *protocol.DataInputX) error
 }
@@ -75,7 +75,7 @@ func CreatePack(typeCode byte) (Pack, error) {
 
 // WritePack writes a pack to the output stream with its type code.
 func WritePack(o *protocol.DataOutputX, p Pack) {
-	o.WriteByte(p.GetPackType())
+	o.WriteByte(p.PackType())
 	p.Write(o)
 }
 

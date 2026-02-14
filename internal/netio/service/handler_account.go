@@ -104,7 +104,7 @@ func RegisterAccountHandlers(r *Registry, accountManager *login.AccountManager) 
 	// Client sends null param.
 	r.Register(protocol.GET_GROUP_POLICY_ALL, func(din *protocol.DataInputX, dout *protocol.DataOutputX, loggedIn bool) {
 
-		allPolicies := accountManager.GetAllGroupPolicies()
+		allPolicies := accountManager.AllGroupPolicies()
 
 		result := &pack.MapPack{}
 		for name, mv := range allPolicies {

@@ -10,7 +10,7 @@ func NewListValue() *ListValue {
 	return &ListValue{Value: make([]Value, 0)}
 }
 
-func (v *ListValue) GetValueType() byte {
+func (v *ListValue) ValueType() byte {
 	return TYPE_LIST
 }
 
