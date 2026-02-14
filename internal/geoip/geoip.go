@@ -83,26 +83,22 @@ func (g *GeoIPUtil) Lookup(ipAddr []byte) (countryCode string, city string, city
 	return result.CountryCode, result.City, result.CityHash
 }
 
+// privateCIDRs holds pre-parsed private IP ranges to avoid repeated parsing.
+var privateCIDRs []*net.IPNet
+
+func init() {
+	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+		_, network, _ := net.ParseCIDR(cidr)
+		privateCIDRs = append(privateCIDRs, network)
+	}
+}
+
 // isPrivateIP checks if an IP address is a private/loopback address.
 func isPrivateIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
-
-	// Check private ranges
-	privateRanges := []struct {
-		network string
-	}{
-		{"10.0.0.0/8"},
-		{"172.16.0.0/12"},
-		{"192.168.0.0/16"},
-	}
-
-	for _, r := range privateRanges {
-		_, cidr, err := net.ParseCIDR(r.network)
-		if err != nil {
-			continue
-		}
+	for _, cidr := range privateCIDRs {
 		if cidr.Contains(ip) {
 			return true
 		}

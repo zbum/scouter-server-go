@@ -58,17 +58,26 @@ func WithObjectCache(oc *cache.ObjectCache) XLogCoreOption {
 }
 
 func NewXLogCore(xlogCache *cache.XLogCache, xlogWR *xlog.XLogWR, profileWR *profile.ProfileWR, xlogGroupPerf *XLogGroupPerf, opts ...XLogCoreOption) *XLogCore {
+	queueSize := 10000
+	if cfg := config.Get(); cfg != nil {
+		queueSize = cfg.XLogQueueSize()
+	}
 	xc := &XLogCore{
 		xlogCache:     xlogCache,
 		xlogWR:        xlogWR,
 		profileWR:     profileWR,
 		xlogGroupPerf: xlogGroupPerf,
-		queue:         make(chan *pack.XLogPack, 4096),
+		queue:         make(chan *pack.XLogPack, queueSize),
 	}
 	for _, opt := range opts {
 		opt(xc)
 	}
-	go xc.run()
+	// Multiple workers to avoid single-goroutine bottleneck.
+	// Go channel supports concurrent receivers safely.
+	numWorkers := 4
+	for i := 0; i < numWorkers; i++ {
+		go xc.run()
+	}
 	return xc
 }
 
@@ -95,20 +104,22 @@ func (xc *XLogCore) run() {
 		// throughput aggregation, matching Scala's XLogCore.calc() filter.
 		isService := xp.XType == pack.XLogTypeWebService || xp.XType == pack.XLogTypeAppService
 
-		// GeoIP lookup
-		if xc.geoIP != nil && len(xp.IPAddr) > 0 {
-			countryCode, _, cityHash := xc.geoIP.Lookup(xp.IPAddr)
-			if countryCode != "" {
-				xp.CountryCode = countryCode
+		// Only WEB_SERVICE and APP_SERVICE go through calc (matching Java's XLogCore)
+		if isService {
+			// Derive group hash from service URL if not already set
+			if xc.xlogGroupPerf != nil {
+				xc.xlogGroupPerf.Process(xp)
 			}
-			if cityHash != 0 {
-				xp.City = cityHash
+			// GeoIP lookup (only for service types, matching Java)
+			if xc.geoIP != nil && len(xp.IPAddr) > 0 {
+				countryCode, _, cityHash := xc.geoIP.Lookup(xp.IPAddr)
+				if countryCode != "" {
+					xp.CountryCode = countryCode
+				}
+				if cityHash != 0 {
+					xp.City = cityHash
+				}
 			}
-		}
-
-		// Derive group hash from service URL if not already set (before serialization)
-		if isService && xc.xlogGroupPerf != nil {
-			xc.xlogGroupPerf.Process(xp)
 		}
 
 		// Serialize and cache for real-time streaming

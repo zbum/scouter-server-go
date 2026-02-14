@@ -2,6 +2,7 @@ package text
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -485,5 +486,102 @@ func TestTextWR_DailyText(t *testing.T) {
 	}
 	if retrieved != text {
 		t.Errorf("Expected %q, got %q", text, retrieved)
+	}
+}
+
+func TestRehashAll(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write some text entries using TextWR
+	wr := NewTextWR(tmpDir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wr.Start(ctx)
+
+	texts := []struct {
+		div  string
+		text string
+	}{
+		{"service", "UserService.login"},
+		{"service", "OrderService.create"},
+		{"service", "PaymentService.process"},
+		{"apicall", "SELECT * FROM users WHERE id = ?"},
+		{"apicall", "INSERT INTO orders VALUES (?, ?, ?)"},
+		{"apicall", "UPDATE payment SET status = ? WHERE id = ?"},
+	}
+
+	for _, tc := range texts {
+		hash := util.HashString(tc.text)
+		wr.Add(tc.div, hash, tc.text)
+	}
+	wr.Flush()
+	wr.Close()
+
+	// Verify data exists before rehash
+	textDir := filepath.Join(tmpDir, textDirName, "text")
+	tableBefore, err := NewTextPermTable(textDir)
+	if err != nil {
+		t.Fatalf("NewTextPermTable before rehash failed: %v", err)
+	}
+	for _, tc := range texts {
+		hash := util.HashString(tc.text)
+		retrieved, found, err := tableBefore.Get(tc.div, hash)
+		if err != nil || !found || retrieved != tc.text {
+			t.Fatalf("Before rehash: expected %q, got %q (found=%v, err=%v)", tc.text, retrieved, found, err)
+		}
+	}
+	tableBefore.Close()
+
+	// Perform rehash with larger hash size (2MB instead of default 1MB)
+	results, err := RehashAll(tmpDir, 2)
+	if err != nil {
+		t.Fatalf("RehashAll failed: %v", err)
+	}
+
+	// Verify results
+	if len(results) != 2 { // service + apicall
+		t.Fatalf("Expected 2 div results, got %d", len(results))
+	}
+
+	totalRecords := 0
+	for _, r := range results {
+		totalRecords += r.Records
+		if r.NewBucket <= r.OldBucket {
+			t.Errorf("Expected new buckets > old buckets for %s: old=%d, new=%d", r.Div, r.OldBucket, r.NewBucket)
+		}
+	}
+	if totalRecords != len(texts) {
+		t.Errorf("Expected %d total records, got %d", len(texts), totalRecords)
+	}
+
+	// Verify data is intact after rehash
+	tableAfter, err := NewTextPermTable(textDir)
+	if err != nil {
+		t.Fatalf("NewTextPermTable after rehash failed: %v", err)
+	}
+	defer tableAfter.Close()
+
+	for _, tc := range texts {
+		hash := util.HashString(tc.text)
+		retrieved, found, err := tableAfter.Get(tc.div, hash)
+		if err != nil {
+			t.Fatalf("After rehash: Get failed for %q: %v", tc.text, err)
+		}
+		if !found {
+			t.Fatalf("After rehash: text not found: %q", tc.text)
+		}
+		if retrieved != tc.text {
+			t.Errorf("After rehash: expected %q, got %q", tc.text, retrieved)
+		}
+	}
+
+	// Verify backup files exist
+	for _, div := range []string{"service", "apicall"} {
+		for _, ext := range []string{".hfile.bak", ".kfile.bak"} {
+			bakFile := filepath.Join(textDir, "text_"+div+ext)
+			if _, err := os.Stat(bakFile); os.IsNotExist(err) {
+				t.Errorf("Backup file not found: %s", bakFile)
+			}
+		}
 	}
 }

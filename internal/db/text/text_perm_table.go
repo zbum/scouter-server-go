@@ -12,7 +12,6 @@ import (
 )
 
 // TextPermTable provides permanent text storage using per-div IndexKeyFile + data files.
-// This matches Java's TextPermWR/TextPermIndex/TextPermData architecture.
 //
 // Files per div: text_{div}.kfile, text_{div}.hfile, text_{div}.data
 // IndexKeyFile key: 4 bytes = hash (big-endian int32)

@@ -83,20 +83,15 @@ func (g *XLogGroupUtil) makeGroupHash(service int32) int32 {
 	url, found := g.textCache.Get("service", service)
 
 	// Fall back to disk storage when the in-memory cache misses.
-	// Only search disk once per service hash to avoid repeated I/O.
+	// Disk lookup is done asynchronously to avoid blocking the XLogCore
+	// hot path — with large kfiles (multi-GB) and small hfiles (1 MB),
+	// hash chain traversal can take thousands of ReadAt calls.
+	// The current XLog gets group=0, but subsequent XLogs with the same
+	// service hash will find the text in textCache.
 	if !found && g.textRD != nil {
 		g.mu.Lock()
 		searched := g.diskSearched[service]
-		g.mu.Unlock()
-
 		if !searched {
-			diskTxt, err := g.textRD.GetString("service", service)
-			if err == nil && diskTxt != "" {
-				url = diskTxt
-				found = true
-				g.textCache.Put("service", service, url)
-			}
-			g.mu.Lock()
 			g.diskSearched[service] = true
 			if len(g.diskSearched) > groupMapMax {
 				for k := range g.diskSearched {
@@ -104,7 +99,16 @@ func (g *XLogGroupUtil) makeGroupHash(service int32) int32 {
 					break
 				}
 			}
-			g.mu.Unlock()
+		}
+		g.mu.Unlock()
+
+		if !searched {
+			go func(svc int32) {
+				diskTxt, err := g.textRD.GetString("service", svc)
+				if err == nil && diskTxt != "" {
+					g.textCache.Put("service", svc, diskTxt)
+				}
+			}(service)
 		}
 	}
 

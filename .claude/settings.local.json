@@ -56,7 +56,9 @@
       "Bash(go run:*)",
       "Bash(wc:*)",
       "Bash(gopls check:*)",
-      "Bash(/Users/nhn/IdeaProjects/scouter.server.go/dist/scouter-server:*)"
+      "Bash(/Users/nhn/IdeaProjects/scouter.server.go/dist/scouter-server:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

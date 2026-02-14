@@ -593,7 +593,6 @@ func (c *Config) MgrTextDbDailyIndexMB() int {
 	return c.GetInt("_mgr_text_db_daily_index_mb", 1)
 }
 
-
 // ---------------------------------------------------------------------------
 // XLog / Profile queue
 // ---------------------------------------------------------------------------

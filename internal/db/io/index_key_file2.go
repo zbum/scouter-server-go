@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/protocol"
@@ -295,6 +296,53 @@ func (f *IndexKeyFile2) Read(handler func(key []byte, data []byte)) error {
 	return nil
 }
 
+// GetAndRefreshTTL retrieves data for a key and refreshes its TTL in a single chain traversal.
+// More efficient than calling Get() followed by SetTTL() separately, avoiding double traversal.
+func (f *IndexKeyFile2) GetAndRefreshTTL(key []byte, ttl int64) ([]byte, error) {
+	if key == nil {
+		return nil, errors.New("invalid key")
+	}
+	keyHash := util.HashBytes(key)
+	realKeyPos := f.hashBlock.Get(keyHash)
+
+	looping := 0
+	for realKeyPos > 0 {
+		oKey, err := f.keyFile.GetKey(realKeyPos)
+		if err != nil {
+			return nil, err
+		}
+		if bytes.Equal(oKey, key) {
+			delOrExp, err := f.keyFile.IsDeletedOrExpired(realKeyPos)
+			if err != nil {
+				return nil, err
+			}
+			if delOrExp {
+				return nil, nil
+			}
+			dataPos, err := f.keyFile.GetDataPos(realKeyPos)
+			if err != nil {
+				return nil, err
+			}
+			// Refresh TTL using the already-found position — no second traversal
+			f.keyFile.SetTTL(realKeyPos, ttl)
+			return dataPos, nil
+		}
+		realKeyPos, err = f.keyFile.GetPrevPos(realKeyPos)
+		if err != nil {
+			return nil, err
+		}
+		looping++
+	}
+	warnCount := 100
+	if cfg := config.Get(); cfg != nil {
+		warnCount = cfg.LogIndexTraversalWarningCount()
+	}
+	if looping > warnCount {
+		slog.Warn("Too many index deep searching", "looping", looping)
+	}
+	return nil, nil
+}
+
 // ReadWithDataReader iterates and resolves data positions to actual data.
 func (f *IndexKeyFile2) ReadWithDataReader(handler func(key []byte, data []byte), reader func(int64) []byte) error {
 	pos := f.keyFile.FirstPos()
@@ -305,6 +353,26 @@ func (f *IndexKeyFile2) ReadWithDataReader(handler func(key []byte, data []byte)
 			return err
 		}
 		if !r.Deleted {
+			dataPos := protocol.BigEndian.Int5(r.DataPos)
+			handler(r.TimeKey, reader(dataPos))
+		}
+		pos = r.Offset
+	}
+	return nil
+}
+
+// ReadValidWithDataReader iterates non-deleted, non-expired records and resolves data.
+// Used by compaction to copy only live entries.
+func (f *IndexKeyFile2) ReadValidWithDataReader(handler func(key []byte, data []byte), reader func(int64) []byte) error {
+	now := time.Now().Unix()
+	pos := f.keyFile.FirstPos()
+	length := f.keyFile.Length()
+	for pos < length && pos > 0 {
+		r, err := f.keyFile.GetRecord(pos)
+		if err != nil {
+			return err
+		}
+		if !r.Deleted && r.Expire > now {
 			dataPos := protocol.BigEndian.Int5(r.DataPos)
 			handler(r.TimeKey, reader(dataPos))
 		}
