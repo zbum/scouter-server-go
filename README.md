@@ -54,6 +54,7 @@ make run
 - [통신 프로토콜 개요](docs/protocol-overview.md) — 바이너리 직렬화, UDP/TCP 패킷 구조, Pack/Value 타입 체계
 - [TCP 에이전트 프로토콜 상세](docs/tcp-agent-protocol.md) — 에이전트 연결 수립, 커넥션 풀, Keepalive, RPC 호출 패턴
 - [Text Cache Database](docs/text-cache-database.md) — 해시 기반 텍스트 저장소, 3계층 캐시 구조, 디스크 파일 포맷, 일별 로테이션
+- [XLog Pipeline](docs/xlog-pipeline.md) — XLog 수신/처리/저장/조회 파이프라인, 링 버퍼 실시간 스트리밍, 3중 인덱스, 서비스 그룹 집계
 
 ## License
 
