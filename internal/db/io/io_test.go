@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/zbum/scouter-server-go/internal/protocol"
+	"github.com/zbum/scouter-server-go/internal/util"
 )
 
 func tempDir(t *testing.T) string {
@@ -905,5 +906,365 @@ func TestIndexTimeFileGetDirect(t *testing.T) {
 	}
 	if td.Time != timeMs {
 		t.Errorf("expected time %d, got %d", timeMs, td.Time)
+	}
+}
+
+// --- RealKeyFile2 tests ---
+
+func TestRealKeyFile2AppendAndRead(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	indexKey := []byte("mykey")
+	dataPos := protocol.BigEndian.Bytes5(12345)
+
+	pos, err := kf.AppendTTL(0, 3600, indexKey, dataPos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pos != 2 {
+		t.Errorf("expected pos 2, got %d", pos)
+	}
+
+	r, err := kf.GetRecord(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Deleted {
+		t.Error("expected not deleted")
+	}
+	if r.PrevPos != 0 {
+		t.Errorf("expected prevPos 0, got %d", r.PrevPos)
+	}
+	if string(r.TimeKey) != "mykey" {
+		t.Errorf("expected 'mykey', got %q", string(r.TimeKey))
+	}
+	gotDataPos := protocol.BigEndian.Int5(r.DataPos)
+	if gotDataPos != 12345 {
+		t.Errorf("expected dataPos 12345, got %d", gotDataPos)
+	}
+	// expire should be in the future (now + 3600)
+	if r.Expire < 1000000 {
+		t.Errorf("expected expire to be a future timestamp, got %d", r.Expire)
+	}
+}
+
+func TestRealKeyFile2Expiration(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// Write a record that's already expired (TTL=0 means expire=now)
+	pos, err := kf.AppendTTL(0, 0, []byte("expired"), protocol.BigEndian.Bytes5(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Set expire to a past timestamp directly
+	if err := kf.SetExpire(pos, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	expired, err := kf.IsExpired(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !expired {
+		t.Error("expected record to be expired")
+	}
+
+	delOrExp, err := kf.IsDeletedOrExpired(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !delOrExp {
+		t.Error("expected IsDeletedOrExpired=true for expired record")
+	}
+}
+
+func TestRealKeyFile2InfiniteTTL(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	// TTL=-1 means infinite (expire = LONG5MaxValue)
+	pos, err := kf.Append(0, []byte("forever"), protocol.BigEndian.Bytes5(999))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := kf.GetRecord(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Expire != protocol.LONG5MaxValue {
+		t.Errorf("expected expire %d (LONG5MaxValue), got %d", protocol.LONG5MaxValue, r.Expire)
+	}
+
+	expired, err := kf.IsExpired(pos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expired {
+		t.Error("expected infinite TTL record to not be expired")
+	}
+}
+
+func TestRealKeyFile2Chain(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "test")
+
+	kf, err := NewRealKeyFile2(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kf.Close()
+
+	pos1, err := kf.Append(0, []byte("key1"), protocol.BigEndian.Bytes5(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pos2, err := kf.Append(pos1, []byte("key2"), protocol.BigEndian.Bytes5(200))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	prevPos, err := kf.GetPrevPos(pos2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prevPos != pos1 {
+		t.Errorf("expected prevPos %d, got %d", pos1, prevPos)
+	}
+
+	prevPos, err = kf.GetPrevPos(pos1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prevPos != 0 {
+		t.Errorf("expected prevPos 0, got %d", prevPos)
+	}
+}
+
+// --- IndexKeyFile2 tests ---
+
+func TestIndexKeyFile2PutGet(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "idx2")
+
+	idx, err := NewIndexKeyFile2(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	key := []byte("mykey")
+	dataOff := protocol.BigEndian.Bytes5(9999)
+
+	if err := idx.Put(key, dataOff); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if protocol.BigEndian.Int5(got) != 9999 {
+		t.Errorf("expected 9999, got %d", protocol.BigEndian.Int5(got))
+	}
+}
+
+func TestIndexKeyFile2TTLExpiration(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "idx2")
+
+	idx, err := NewIndexKeyFile2(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	key := []byte("expkey")
+	dataOff := protocol.BigEndian.Bytes5(5555)
+
+	// Insert with TTL
+	if err := idx.PutTTL(key, dataOff, 3600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should be findable
+	got, err := idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("expected non-nil result before expiration")
+	}
+
+	// Force expire by setting expire to past timestamp
+	keyHash := util.HashBytes(key)
+	pos := idx.hashBlock.Get(keyHash)
+	if err := idx.keyFile.SetExpire(pos, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	// Should no longer be findable
+	got, err = idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Error("expected nil result after expiration")
+	}
+
+	// HasKey should also return false
+	has, err := idx.HasKey(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if has {
+		t.Error("expected HasKey=false after expiration")
+	}
+}
+
+func TestIndexKeyFile2UpdateOrPut(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "idx2")
+
+	idx, err := NewIndexKeyFile2(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	key := []byte("ukey")
+	val1 := protocol.BigEndian.Bytes5(1000)
+	val2 := protocol.BigEndian.Bytes5(2000)
+
+	// First call inserts
+	ok, err := idx.UpdateOrPut(key, val1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("expected true from UpdateOrPut")
+	}
+
+	got, err := idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if protocol.BigEndian.Int5(got) != 1000 {
+		t.Errorf("expected 1000, got %d", protocol.BigEndian.Int5(got))
+	}
+
+	// Second call updates in place (same size value)
+	ok, err = idx.UpdateOrPut(key, val2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("expected true from UpdateOrPut")
+	}
+
+	got, err = idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if protocol.BigEndian.Int5(got) != 2000 {
+		t.Errorf("expected 2000, got %d", protocol.BigEndian.Int5(got))
+	}
+}
+
+func TestIndexKeyFile2SetTTL(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "idx2")
+
+	idx, err := NewIndexKeyFile2(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	key := []byte("ttlkey")
+	if err := idx.Put(key, protocol.BigEndian.Bytes5(100)); err != nil {
+		t.Fatal(err)
+	}
+
+	// SetTTL on existing key
+	ok, err := idx.SetTTL(key, 7200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Error("expected SetTTL to succeed")
+	}
+
+	// Key should still be accessible
+	got, err := idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Error("expected key to still exist after SetTTL")
+	}
+
+	// SetTTL on non-existent key
+	ok, err = idx.SetTTL([]byte("nokey"), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
+		t.Error("expected SetTTL to fail for non-existent key")
+	}
+}
+
+func TestIndexKeyFile2Delete(t *testing.T) {
+	dir := tempDir(t)
+	path := filepath.Join(dir, "idx2")
+
+	idx, err := NewIndexKeyFile2(path, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer idx.Close()
+
+	key := []byte("delkey")
+	idx.Put(key, protocol.BigEndian.Bytes5(100))
+
+	n, err := idx.Delete(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 deleted, got %d", n)
+	}
+
+	got, err := idx.Get(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != nil {
+		t.Error("expected nil after delete")
 	}
 }

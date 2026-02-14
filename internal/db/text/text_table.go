@@ -6,17 +6,19 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/db/io"
+	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-// TextTable provides text storage using per-div IndexKeyFiles.
-// Each div (e.g. "service", "sql", "method") gets its own file: text_{div}.
-// Key format: 4 bytes = hash (big-endian int32)
+// TextTable provides text storage using a single IndexKeyFile.
+// Key format: 8 bytes = [4B hash(div)][4B textHash] (big-endian int32 each)
+// This matches Java Scouter's TextTable binary format for compatibility.
 // Value: UTF-8 text bytes
 type TextTable struct {
-	mu      sync.Mutex
-	path    string
-	indexes map[string]*io.IndexKeyFile // div -> IndexKeyFile
+	mu    sync.Mutex
+	path  string
+	index *io.IndexKeyFile
 }
 
 // NewTextTable opens or creates a text table at the specified directory.
@@ -26,24 +28,27 @@ func NewTextTable(dir string) (*TextTable, error) {
 	}
 
 	return &TextTable{
-		path:    dir,
-		indexes: make(map[string]*io.IndexKeyFile),
+		path: dir,
 	}, nil
 }
 
-// getIndex returns the IndexKeyFile for the given div, creating it if necessary.
-func (t *TextTable) getIndex(div string) (*io.IndexKeyFile, error) {
-	if idx, ok := t.indexes[div]; ok {
-		return idx, nil
+// getIndex returns the single IndexKeyFile, creating it if necessary.
+func (t *TextTable) getIndex() (*io.IndexKeyFile, error) {
+	if t.index != nil {
+		return t.index, nil
 	}
 
-	indexPath := filepath.Join(t.path, "text_"+div)
-	idx, err := io.NewIndexKeyFile(indexPath, 1)
+	hashSizeMB := 1
+	if cfg := config.Get(); cfg != nil {
+		hashSizeMB = cfg.MgrTextDbDailyIndexMB()
+	}
+	indexPath := filepath.Join(t.path, "text")
+	idx, err := io.NewIndexKeyFile(indexPath, hashSizeMB)
 	if err != nil {
 		return nil, err
 	}
 
-	t.indexes[div] = idx
+	t.index = idx
 	return idx, nil
 }
 
@@ -53,12 +58,12 @@ func (t *TextTable) Set(div string, hash int32, text string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	idx, err := t.getIndex(div)
+	idx, err := t.getIndex()
 	if err != nil {
 		return err
 	}
 
-	key := makeHashKey(hash)
+	key := makeHashKey(div, hash)
 	exists, err := idx.HasKey(key)
 	if err != nil {
 		return err
@@ -75,12 +80,12 @@ func (t *TextTable) Get(div string, hash int32) (string, bool, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	idx, err := t.getIndex(div)
+	idx, err := t.getIndex()
 	if err != nil {
 		return "", false, err
 	}
 
-	key := makeHashKey(hash)
+	key := makeHashKey(div, hash)
 	value, err := idx.Get(key)
 	if err != nil {
 		return "", false, err
@@ -91,20 +96,22 @@ func (t *TextTable) Get(div string, hash int32) (string, bool, error) {
 	return string(value), true, nil
 }
 
-// Close closes all underlying IndexKeyFiles.
+// Close closes the underlying IndexKeyFile.
 func (t *TextTable) Close() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	for _, idx := range t.indexes {
-		idx.Close()
+	if t.index != nil {
+		t.index.Close()
+		t.index = nil
 	}
-	t.indexes = make(map[string]*io.IndexKeyFile)
 }
 
-// makeHashKey builds a 4-byte big-endian key from hash.
-func makeHashKey(hash int32) []byte {
-	key := make([]byte, 4)
-	binary.BigEndian.PutUint32(key, uint32(hash))
+// makeHashKey builds an 8-byte key: [4B hash(div)][4B textHash].
+// This matches Java's: new DataOutputX().writeInt(HashUtil.hash(div)).writeInt(key).toByteArray()
+func makeHashKey(div string, hash int32) []byte {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint32(key[:4], uint32(util.HashString(div)))
+	binary.BigEndian.PutUint32(key[4:], uint32(hash))
 	return key
 }

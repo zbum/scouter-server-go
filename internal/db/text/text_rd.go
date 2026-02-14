@@ -12,11 +12,12 @@ type cacheKey struct {
 }
 
 // TextRD provides text reading with caching.
-// All text data is read from a single "00000000" directory.
+// Permanent text is read from "00000000/text/" using TextPermTable (per-div files with .data).
+// Daily text is read from per-date directories using TextTable (single file with composite key).
 type TextRD struct {
 	mu          sync.RWMutex
 	baseDir     string
-	table       *TextTable
+	table       *TextPermTable
 	dailyTables map[string]*TextTable // date → TextTable for daily text
 	cache       map[cacheKey]string   // in-memory cache
 }
@@ -30,7 +31,7 @@ func NewTextRD(baseDir string) *TextRD {
 	}
 }
 
-// GetString retrieves a text string by div and hash.
+// GetString retrieves a text string by div and hash from permanent storage.
 // Checks cache first, then reads from the text table.
 func (r *TextRD) GetString(div string, hash int32) (string, error) {
 	key := cacheKey{
@@ -75,14 +76,14 @@ func (r *TextRD) GetString(div string, hash int32) (string, error) {
 	return text, nil
 }
 
-// getTable returns the single text table, opening it if necessary.
-func (r *TextRD) getTable() (*TextTable, error) {
+// getTable returns the permanent text table, opening it if necessary.
+func (r *TextRD) getTable() (*TextPermTable, error) {
 	if r.table != nil {
 		return r.table, nil
 	}
 
-	dir := filepath.Join(r.baseDir, textDirName)
-	table, err := NewTextTable(dir)
+	dir := filepath.Join(r.baseDir, textDirName, "text")
+	table, err := NewTextPermTable(dir)
 	if err != nil {
 		return nil, err
 	}

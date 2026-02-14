@@ -113,6 +113,14 @@ func ConfigMetaMap() map[string]ConfigMeta {
 		"mgr_text_db_daily_service_enabled": {"Enable daily text DB for services", ValueTypeBool},
 		"mgr_text_db_daily_api_enabled":     {"Enable daily text DB for APIs", ValueTypeBool},
 		"mgr_text_db_daily_ua_enabled":      {"Enable daily text DB for user agents", ValueTypeBool},
+		"_mgr_text_db_index_default_mb":     {"Hash index size in MB for default text types", ValueTypeNum},
+		"_mgr_text_db_index_service_mb":     {"Hash index size in MB for service text", ValueTypeNum},
+		"_mgr_text_db_index_api_mb":         {"Hash index size in MB for API call text", ValueTypeNum},
+		"_mgr_text_db_index_ua_mb":          {"Hash index size in MB for user agent text", ValueTypeNum},
+		"_mgr_text_db_index_login_mb":       {"Hash index size in MB for login text", ValueTypeNum},
+		"_mgr_text_db_index_desc_mb":        {"Hash index size in MB for desc text", ValueTypeNum},
+		"_mgr_text_db_index_hmsg_mb":        {"Hash index size in MB for hash message text", ValueTypeNum},
+		"_mgr_text_db_daily_index_mb":       {"Hash index size in MB for daily text", ValueTypeNum},
 
 		// Directories
 		"plugin_dir":     {"Plugin directory path", ValueTypeString},

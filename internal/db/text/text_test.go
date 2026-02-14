@@ -8,13 +8,12 @@ import (
 	"github.com/zbum/scouter-server-go/internal/util"
 )
 
-func TestTextTable_SetGet(t *testing.T) {
+func TestTextPermTable_SetGet(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "00000000")
 
-	table, err := NewTextTable(dir)
+	table, err := NewTextPermTable(tmpDir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -40,13 +39,12 @@ func TestTextTable_SetGet(t *testing.T) {
 	}
 }
 
-func TestTextTable_MultipleTexts(t *testing.T) {
+func TestTextPermTable_MultipleTexts(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "00000000")
 
-	table, err := NewTextTable(dir)
+	table, err := NewTextPermTable(tmpDir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -86,13 +84,12 @@ func TestTextTable_MultipleTexts(t *testing.T) {
 	}
 }
 
-func TestTextTable_NotFound(t *testing.T) {
+func TestTextPermTable_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "00000000")
 
-	table, err := NewTextTable(dir)
+	table, err := NewTextPermTable(tmpDir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -106,6 +103,110 @@ func TestTextTable_NotFound(t *testing.T) {
 	}
 	if retrieved != "" {
 		t.Errorf("Expected empty string, got: %q", retrieved)
+	}
+}
+
+func TestTextPermTable_Dedup(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	table, err := NewTextPermTable(tmpDir)
+	if err != nil {
+		t.Fatalf("NewTextPermTable failed: %v", err)
+	}
+	defer table.Close()
+
+	div := "service"
+	text := "UserService.login"
+	hash := util.HashString(text)
+
+	// Set twice — second should be no-op
+	err = table.Set(div, hash, text)
+	if err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+	err = table.Set(div, hash, text)
+	if err != nil {
+		t.Fatalf("Set (2nd) failed: %v", err)
+	}
+
+	// HasKey
+	exists, err := table.HasKey(div, hash)
+	if err != nil {
+		t.Fatalf("HasKey failed: %v", err)
+	}
+	if !exists {
+		t.Fatal("Expected key to exist")
+	}
+
+	retrieved, found, err := table.Get(div, hash)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !found {
+		t.Fatal("Text not found")
+	}
+	if retrieved != text {
+		t.Errorf("Expected %q, got %q", text, retrieved)
+	}
+}
+
+func TestTextTable_DailySetGet(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	table, err := NewTextTable(tmpDir)
+	if err != nil {
+		t.Fatalf("NewTextTable failed: %v", err)
+	}
+	defer table.Close()
+
+	// Test Set and Get with composite key
+	div := "error"
+	text := "NullPointerException at line 42"
+	hash := util.HashString(text)
+
+	err = table.Set(div, hash, text)
+	if err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+
+	retrieved, found, err := table.Get(div, hash)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if !found {
+		t.Fatalf("Expected text to be found")
+	}
+	if retrieved != text {
+		t.Errorf("Expected %q, got %q", text, retrieved)
+	}
+}
+
+func TestTextTable_DailyMultipleDivs(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	table, err := NewTextTable(tmpDir)
+	if err != nil {
+		t.Fatalf("NewTextTable failed: %v", err)
+	}
+	defer table.Close()
+
+	// Same hash with different divs should be different entries
+	text1 := "UserService.login"
+	text2 := "OrderService.login"
+	hash1 := util.HashString(text1)
+	hash2 := util.HashString(text2)
+
+	table.Set("service", hash1, text1)
+	table.Set("error", hash2, text2)
+
+	r1, found1, _ := table.Get("service", hash1)
+	r2, found2, _ := table.Get("error", hash2)
+
+	if !found1 || r1 != text1 {
+		t.Errorf("service text: expected %q, got %q (found=%v)", text1, r1, found1)
+	}
+	if !found2 || r2 != text2 {
+		t.Errorf("error text: expected %q, got %q (found=%v)", text2, r2, found2)
 	}
 }
 
@@ -138,11 +239,11 @@ func TestTextWR_AsyncWrite(t *testing.T) {
 	wr.Flush()
 	wr.Close()
 
-	// Verify writes — all text stored in 00000000 directory
-	dir := filepath.Join(tmpDir, textDirName)
-	table, err := NewTextTable(dir)
+	// Verify writes — permanent text stored in 00000000/text directory using TextPermTable
+	dir := filepath.Join(tmpDir, textDirName, "text")
+	table, err := NewTextPermTable(dir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -195,11 +296,11 @@ func TestTextWR_Deduplication(t *testing.T) {
 	// Close writer before verification
 	wr.Close()
 
-	// Verify only one write occurred
-	dir := filepath.Join(tmpDir, textDirName)
-	table, err := NewTextTable(dir)
+	// Verify only one write occurred using TextPermTable
+	dir := filepath.Join(tmpDir, textDirName, "text")
+	table, err := NewTextPermTable(dir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -316,13 +417,12 @@ func TestTextRD_NotFound(t *testing.T) {
 	}
 }
 
-func TestTextTable_UnicodeText(t *testing.T) {
+func TestTextPermTable_UnicodeText(t *testing.T) {
 	tmpDir := t.TempDir()
-	dir := filepath.Join(tmpDir, "00000000")
 
-	table, err := NewTextTable(dir)
+	table, err := NewTextPermTable(tmpDir)
 	if err != nil {
-		t.Fatalf("NewTextTable failed: %v", err)
+		t.Fatalf("NewTextPermTable failed: %v", err)
 	}
 	defer table.Close()
 
@@ -354,5 +454,36 @@ func TestTextTable_UnicodeText(t *testing.T) {
 		if retrieved != text {
 			t.Errorf("Expected %q, got %q", text, retrieved)
 		}
+	}
+}
+
+func TestTextWR_DailyText(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	wr := NewTextWR(tmpDir)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	wr.Start(ctx)
+
+	div := "error"
+	text := "NullPointerException"
+	hash := util.HashString(text)
+	date := "20260215"
+
+	wr.AddDaily(date, div, hash, text)
+	wr.Close()
+
+	// Verify daily text
+	retrieved, err := wr.GetDailyString(date, div, hash)
+	// Writer is closed, so we need to read from a fresh reader
+	rd := NewTextRD(tmpDir)
+	defer rd.Close()
+
+	retrieved, err = rd.GetDailyString(date, div, hash)
+	if err != nil {
+		t.Fatalf("GetDailyString failed: %v", err)
+	}
+	if retrieved != text {
+		t.Errorf("Expected %q, got %q", text, retrieved)
 	}
 }
