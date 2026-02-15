@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zbum/scouter-server-go/internal/config"
 	"github.com/zbum/scouter-server-go/internal/db/io"
 )
 
@@ -17,23 +18,18 @@ type RehashResult struct {
 	Records   int
 	OldBucket int
 	NewBucket int
+	HashMB    int
 	Elapsed   time.Duration
 }
 
 // RehashAll rehashes all text index files in the permanent text directory.
-// It rebuilds hfile and kfile with the specified hash size (in MB) while
-// leaving the .data files untouched.
+// The hash size for each div is read from config (MgrTextDbIndexMB).
+// fallbackMB is used when config returns the default 1MB (to allow
+// overriding small defaults for large datasets).
 //
-// Memory usage is bounded: only the two hfiles (old ~1MB + new ~128MB) are
-// held in memory. Records are streamed directly from old to new without
-// buffering.
-//
-// The process for each div:
-//  1. Open old IndexKeyFile (loads existing hfile size from disk)
-//  2. Create new IndexKeyFile at temp path with newHashSizeMB
-//  3. Stream all non-deleted records from old to new via sequential kfile scan
-//  4. Close both, backup old files (.bak), rename new files
-func RehashAll(dataDir string, newHashSizeMB int) ([]RehashResult, error) {
+// Memory usage is bounded: only the two hfiles are held in memory.
+// Records are streamed directly from old to new without buffering.
+func RehashAll(dataDir string, fallbackMB int) ([]RehashResult, error) {
 	textDir := filepath.Join(dataDir, textDirName, "text")
 
 	if _, err := os.Stat(textDir); os.IsNotExist(err) {
@@ -61,11 +57,12 @@ func RehashAll(dataDir string, newHashSizeMB int) ([]RehashResult, error) {
 		return nil, fmt.Errorf("no text index files found in %s", textDir)
 	}
 
-	slog.Info("Rehash: found divs", "divs", divs, "newHashSizeMB", newHashSizeMB)
+	slog.Info("Rehash: found divs", "divs", divs, "fallbackMB", fallbackMB)
 
 	var results []RehashResult
 	for _, div := range divs {
-		result, err := rehashDiv(textDir, div, newHashSizeMB)
+		hashMB := resolveHashSizeMB(div, fallbackMB)
+		result, err := rehashDiv(textDir, div, hashMB)
 		if err != nil {
 			return results, fmt.Errorf("rehash %q failed: %w", div, err)
 		}
@@ -73,6 +70,19 @@ func RehashAll(dataDir string, newHashSizeMB int) ([]RehashResult, error) {
 	}
 
 	return results, nil
+}
+
+// resolveHashSizeMB returns the target hash size for a div.
+// If config has an explicit per-div setting (> default 1MB), use it.
+// Otherwise, use fallbackMB.
+func resolveHashSizeMB(div string, fallbackMB int) int {
+	if cfg := config.Get(); cfg != nil {
+		cfgMB := cfg.MgrTextDbIndexMB(div)
+		if cfgMB > 1 {
+			return cfgMB // explicit config setting
+		}
+	}
+	return fallbackMB
 }
 
 // rehashDiv rebuilds the index for a single div by streaming records
@@ -84,7 +94,7 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 	oldPath := filepath.Join(textDir, "text_"+div)
 	newPath := filepath.Join(textDir, "text_"+div+"_rehash_tmp")
 
-	slog.Info("Rehash: starting", "div", div, "path", oldPath)
+	slog.Info("Rehash: starting", "div", div, "targetMB", newHashSizeMB)
 
 	// Read old hfile size to report statistics and check if already rehashed
 	oldHfileInfo, err := os.Stat(oldPath + ".hfile")
@@ -94,16 +104,16 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 	oldBufSize := int(oldHfileInfo.Size()) - 1024 // subtract memHeadReserved
 	oldBuckets := oldBufSize / 5
 
-	// Skip if already rehashed (hfile is already >= target size)
+	// Skip if hfile is already the target size
 	targetBufSize := newHashSizeMB * 1024 * 1024
-	if oldBufSize >= targetBufSize {
-		slog.Info("Rehash: skipping already rehashed div", "div", div,
-			"currentMB", oldBufSize/(1024*1024), "targetMB", newHashSizeMB)
+	if oldBufSize == targetBufSize {
+		slog.Info("Rehash: skipping, already at target size", "div", div, "sizeMB", newHashSizeMB)
 		return &RehashResult{
 			Div:       div,
-			Records:   -1, // indicates skipped
+			Records:   -1,
 			OldBucket: oldBuckets,
 			NewBucket: oldBuckets,
+			HashMB:    newHashSizeMB,
 			Elapsed:   time.Since(start),
 		}, nil
 	}
@@ -136,11 +146,12 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 			Records:   0,
 			OldBucket: oldBuckets,
 			NewBucket: newHashSizeMB * 1024 * 1024 / 5,
+			HashMB:    newHashSizeMB,
 			Elapsed:   time.Since(start),
 		}, nil
 	}
 
-	// Create new IndexKeyFile with the larger hash size
+	// Create new IndexKeyFile with the target hash size
 	var newIdx *io.IndexKeyFile
 	newIdx, err = io.NewIndexKeyFile(newPath, newHashSizeMB)
 	if err != nil {
@@ -149,14 +160,11 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 	}
 
 	// Stream records directly from old to new — no bulk memory allocation.
-	// IndexKeyFile.Read() scans the kfile sequentially; each record's key
-	// and dataPos are freshly allocated by GetRecord(), so they are safe
-	// to pass directly to Put() without copying.
 	inserted := 0
 	var insertErr error
 	err = oldIdx.Read(func(key []byte, dataPos []byte) {
 		if insertErr != nil {
-			return // skip remaining on error
+			return
 		}
 		if err := newIdx.Put(key, dataPos); err != nil {
 			insertErr = err
@@ -201,17 +209,12 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 		bakFile := oldPath + ext + ".bak"
 		newFile := newPath + ext
 
-		// Remove previous backup if exists
 		os.Remove(bakFile)
 
-		// Backup old file
 		if err := os.Rename(oldFile, bakFile); err != nil {
 			return nil, fmt.Errorf("backup %s: %w", ext, err)
 		}
-
-		// Move new file into place
 		if err := os.Rename(newFile, oldFile); err != nil {
-			// Try to restore backup
 			os.Rename(bakFile, oldFile)
 			return nil, fmt.Errorf("rename new %s: %w", ext, err)
 		}
@@ -229,6 +232,7 @@ func rehashDiv(textDir, div string, newHashSizeMB int) (*RehashResult, error) {
 		Records:   inserted,
 		OldBucket: oldBuckets,
 		NewBucket: newBuckets,
+		HashMB:    newHashSizeMB,
 		Elapsed:   elapsed,
 	}, nil
 }

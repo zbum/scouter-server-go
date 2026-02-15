@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/zbum/scouter-server-go/internal/config"
-	scoutercounter "github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/core"
 	"github.com/zbum/scouter-server-go/internal/core/cache"
+	scoutercounter "github.com/zbum/scouter-server-go/internal/counter"
 	"github.com/zbum/scouter-server-go/internal/db"
 	"github.com/zbum/scouter-server-go/internal/db/alert"
 	"github.com/zbum/scouter-server-go/internal/db/counter"
@@ -458,7 +458,7 @@ func runRehash() {
 	fmt.Printf("\n=== Rehash Complete ===\n")
 	for _, r := range results {
 		if r.Records < 0 {
-			fmt.Printf("  %-12s  (skipped - already rehashed)\n", r.Div)
+			fmt.Printf("  %-12s  (skipped - already at %dMB)\n", r.Div, r.HashMB)
 			continue
 		}
 		if r.Records == 0 {
@@ -467,8 +467,8 @@ func runRehash() {
 		}
 		avgOld := float64(r.Records) / float64(max(r.OldBucket, 1))
 		avgNew := float64(r.Records) / float64(max(r.NewBucket, 1))
-		fmt.Printf("  %-12s  records=%-12d  chain: %.1f → %.1f  elapsed=%s\n",
-			r.Div, r.Records, avgOld, avgNew, r.Elapsed.Round(time.Millisecond))
+		fmt.Printf("  %-12s  records=%-12d  %dMB  chain: %.1f → %.1f  elapsed=%s\n",
+			r.Div, r.Records, r.HashMB, avgOld, avgNew, r.Elapsed.Round(time.Millisecond))
 	}
 }
 
