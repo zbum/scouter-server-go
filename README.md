@@ -1,3 +1,7 @@
+# 레포지토리 이동
+* 이 레포지토리는 아래 레포지토리로 이동합니다.
+* https://github.com/scouter-project/scouter-server-go
+
 # Scouter Server (Go)
 
 Scouter APM의 **경량 백엔드 서버**입니다. 기존 Java 서버를 Go로 재작성하여 메모리·CPU 효율을 대폭 개선하면서 동일한 APM 데이터 수집 기능을 제공합니다. 단일 바이너리로 배포되며, JVM 없이 즉시 실행할 수 있습니다.
